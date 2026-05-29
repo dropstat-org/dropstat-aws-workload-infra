@@ -33,9 +33,27 @@ variable "health_check_path" {
 }
 
 variable "desired_count" {
-  description = "Minimum (and initial) number of tasks"
+  description = "Initial number of tasks at deploy time"
   type        = number
   default     = 1
+}
+
+variable "min_task_count" {
+  description = "Minimum tasks auto-scaling can scale in to. Set to 0 to allow scale-to-zero."
+  type        = number
+  default     = 0
+}
+
+variable "max_task_count" {
+  description = "Maximum tasks auto-scaling can scale out to"
+  type        = number
+  default     = 3
+}
+
+variable "scaling_target_value" {
+  description = "ALB requests per target per minute that triggers scale-out. Default 10 = scales to 0 when idle."
+  type        = number
+  default     = 10
 }
 
 variable "vpc_id" {

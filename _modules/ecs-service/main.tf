@@ -48,11 +48,16 @@ module "service" {
   }
 
   # Auto-scaling
+  # ALBRequestCountPerTarget can drive scale-in to 0 (CPU cannot — needs tasks to measure).
+  # Scale out when > 10 req/target/min, scale in to 0 when idle.
+  # scale_in_cooldown: 300s avoids flapping on bursty traffic.
   scaling_target = {
-    metric_type     = "ECSServiceAverageCPUUtilization"
-    target_value    = 70
-    min_task_count  = var.desired_count
-    max_task_count  = var.desired_count * 3
+    metric_type        = "ALBRequestCountPerTarget"
+    target_value       = var.scaling_target_value
+    min_task_count     = var.min_task_count
+    max_task_count     = var.max_task_count
+    scale_in_cooldown  = 300
+    scale_out_cooldown = 60
   }
 
   # IAM — grant access to SSM parameters and Secrets Manager

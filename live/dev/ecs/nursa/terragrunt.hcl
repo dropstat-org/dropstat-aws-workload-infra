@@ -36,7 +36,10 @@ inputs = {
 
   container_port    = 8081
   health_check_path = "/api/version"
-  desired_count     = local.cfg.desired_count
+  desired_count        = local.cfg.desired_count
+  min_task_count       = local.cfg.min_task_count
+  max_task_count       = local.cfg.max_task_count
+  scaling_target_value = local.cfg.scaling_target_value
 
   # ECS → private subnets (workload layer)
   vpc_id             = dependency.account.outputs.vpc_id

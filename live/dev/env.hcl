@@ -8,19 +8,28 @@ locals {
 
   ecs = {
     dropstat_api = {
-      cpu           = 1024
-      memory        = 2048
-      desired_count = 1
+      cpu                  = 1024
+      memory               = 2048
+      desired_count        = 1
+      min_task_count       = 0
+      max_task_count       = 3
+      scaling_target_value = 10   # req/target/min — scales to 0 when idle
     }
     integrations_rest = {
-      cpu           = 256
-      memory        = 512
-      desired_count = 1
+      cpu                  = 256
+      memory               = 512
+      desired_count        = 1
+      min_task_count       = 0
+      max_task_count       = 2
+      scaling_target_value = 10
     }
     nursa = {
-      cpu           = 1024
-      memory        = 2048
-      desired_count = 1
+      cpu                  = 1024
+      memory               = 2048
+      desired_count        = 1
+      min_task_count       = 0
+      max_task_count       = 3
+      scaling_target_value = 10
     }
   }
 
