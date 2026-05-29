@@ -1,73 +1,102 @@
 variable "name" {
-  description = "Service name — e.g. dropstat-api-dev"
-  type        = string
+  type = string
+}
+
+variable "cluster_arn" {
+  type = string
+}
+
+variable "cluster_name" {
+  type = string
 }
 
 variable "cpu" {
-  description = "Task CPU units (256, 512, 1024, 2048, 4096)"
-  type        = number
-  default     = 1024
+  type    = number
+  default = 1024
 }
 
 variable "memory" {
-  description = "Task memory in MiB"
-  type        = number
-  default     = 2048
+  type    = number
+  default = 2048
 }
 
 variable "image" {
-  description = "Full ECR image URI including tag — e.g. 123456.dkr.ecr.us-east-2.amazonaws.com/dropstat-prod:abc123"
-  type        = string
+  type = string
 }
 
 variable "container_port" {
-  description = "Port the container listens on"
-  type        = number
-  default     = 8080
+  type    = number
+  default = 8080
 }
 
 variable "health_check_path" {
-  description = "ALB health check path"
-  type        = string
-  default     = "/actuator/health"
+  type    = string
+  default = "/health"
 }
 
 variable "desired_count" {
-  description = "Initial number of tasks at deploy time"
+  description = "Initial task count at deploy time"
   type        = number
   default     = 1
 }
 
 variable "min_task_count" {
-  description = "Minimum tasks auto-scaling can scale in to. Set to 0 to allow scale-to-zero."
+  description = "Minimum tasks — set to 0 for scale-to-zero"
   type        = number
   default     = 0
 }
 
 variable "max_task_count" {
-  description = "Maximum tasks auto-scaling can scale out to"
+  description = "Maximum tasks for scale-out"
   type        = number
   default     = 3
 }
 
 variable "scaling_target_value" {
-  description = "ALB requests per target per minute that triggers scale-out. Default 10 = scales to 0 when idle."
+  description = "ALB requests per target per minute to trigger scale-out"
   type        = number
   default     = 10
 }
 
 variable "vpc_id" {
-  description = "VPC ID from platform-infra"
-  type        = string
+  type = string
 }
 
 variable "private_subnet_ids" {
-  description = "Private subnet IDs for ECS tasks"
+  type = list(string)
+}
+
+variable "alb_security_group_id" {
+  description = "ALB security group — tasks only accept traffic from here"
+  type        = string
+}
+
+variable "alb_arn_suffix" {
+  description = "ALB ARN suffix — required for ALBRequestCountPerTarget metric"
+  type        = string
+}
+
+variable "http_listener_arn" {
+  type    = string
+  default = null
+}
+
+variable "https_listener_arn" {
+  type    = string
+  default = null
+}
+
+variable "hostnames" {
+  description = "Host headers for ALB routing — e.g. [\"api.dropstat.com\"]"
   type        = list(string)
 }
 
+variable "listener_rule_priority" {
+  description = "ALB listener rule priority — must be unique per listener"
+  type        = number
+}
+
 variable "environment_vars" {
-  description = "Non-sensitive environment variables — list of {name, value}"
   type = list(object({
     name  = string
     value = string
@@ -76,7 +105,6 @@ variable "environment_vars" {
 }
 
 variable "secrets" {
-  description = "Secrets from SSM/Secrets Manager — list of {name, valueFrom}"
   type = list(object({
     name      = string
     valueFrom = string
@@ -85,31 +113,26 @@ variable "secrets" {
 }
 
 variable "ssm_param_arns" {
-  description = "SSM parameter ARNs the execution role can read"
-  type        = list(string)
-  default     = []
+  type    = list(string)
+  default = []
 }
 
 variable "secret_arns" {
-  description = "Secrets Manager secret ARNs the execution role can read"
-  type        = list(string)
-  default     = []
+  type    = list(string)
+  default = []
 }
 
 variable "task_iam_statements" {
-  description = "Additional IAM statements for the task role (SQS, S3, etc.)"
-  type        = any
-  default     = {}
+  type    = any
+  default = {}
 }
 
 variable "log_retention_days" {
-  description = "CloudWatch log retention in days"
-  type        = number
-  default     = 14
+  type    = number
+  default = 7
 }
 
 variable "tags" {
-  description = "Additional tags"
-  type        = map(string)
-  default     = {}
+  type    = map(string)
+  default = {}
 }

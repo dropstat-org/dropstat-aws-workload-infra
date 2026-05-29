@@ -1,74 +1,179 @@
 # ============================================================
 # _modules/ecs-service
-# Wraps terraform-aws-modules/ecs express-service
-# Used by: live/{env}/ecs/{service}/
+# ECS Fargate service + target group + ALB listener rule + auto-scaling
+# ALB and cluster are created separately and passed in.
 # ============================================================
 
+locals {
+  listener_arn = var.https_listener_arn != null ? var.https_listener_arn : var.http_listener_arn
+}
+
+# ── Target group ──────────────────────────────────────────────────────────────
+
+resource "aws_lb_target_group" "this" {
+  name        = var.name
+  port        = var.container_port
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    path                = var.health_check_path
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    interval            = 30
+    timeout             = 10
+    matcher             = "200-299"
+  }
+
+  # Allow draining before scale-in removes a task
+  deregistration_delay = 30
+
+  tags = var.tags
+}
+
+# ── ALB listener rule — host-based routing ────────────────────────────────────
+
+resource "aws_lb_listener_rule" "this" {
+  listener_arn = local.listener_arn
+  priority     = var.listener_rule_priority
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.this.arn
+  }
+
+  condition {
+    host_header {
+      values = var.hostnames
+    }
+  }
+
+  tags = var.tags
+}
+
+# ── Security group for ECS tasks ──────────────────────────────────────────────
+
+resource "aws_security_group" "tasks" {
+  name        = "${var.name}-tasks"
+  description = "ECS tasks for ${var.name}"
+  vpc_id      = var.vpc_id
+
+  # Allow inbound from ALB only
+  ingress {
+    from_port       = var.container_port
+    to_port         = var.container_port
+    protocol        = "tcp"
+    security_groups = [var.alb_security_group_id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = var.tags
+}
+
+# ── ECS service ───────────────────────────────────────────────────────────────
+
 module "service" {
-  source  = "terraform-aws-modules/ecs/aws//modules/express-service"
+  source  = "terraform-aws-modules/ecs/aws//modules/service"
   version = "~> 5.12"
 
-  name = var.name
+  name        = var.name
+  cluster_arn = var.cluster_arn
 
-  # Compute
   cpu    = var.cpu
   memory = var.memory
 
-  # Container
-  primary_container = {
-    image            = var.image
-    container_port   = var.container_port
-    health_check_path = var.health_check_path
+  desired_count                  = var.desired_count
+  deployment_minimum_healthy_percent = 50
+  deployment_maximum_percent         = 200
 
-    environment = var.environment_vars
-    secrets     = var.secrets
+  container_definitions = {
+    (var.name) = {
+      image     = var.image
+      cpu       = var.cpu
+      memory    = var.memory
+      essential = true
 
-    log_configuration = {
-      logDriver = "awslogs"
-      options = {
-        awslogs-group         = "/ecs/${var.name}"
-        awslogs-region        = "us-east-2"
-        awslogs-stream-prefix = "ecs"
+      port_mappings = [{
+        containerPort = var.container_port
+        protocol      = "tcp"
+      }]
+
+      environment = var.environment_vars
+      secrets     = var.secrets
+
+      log_configuration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = "/ecs/${var.name}"
+          awslogs-region        = "us-east-2"
+          awslogs-stream-prefix = "ecs"
+        }
       }
+
+      readonly_root_filesystem = false
     }
   }
 
   # Networking
-  vpc_id = var.vpc_id
-  network_configuration = {
-    subnets = var.private_subnet_ids
-  }
+  subnet_ids = var.private_subnet_ids
+  security_group_ids = [aws_security_group.tasks.id]
+  create_security_group = false
 
-  # Security group — allow outbound only; inbound managed by ALB in express-service
-  security_group_egress_rules = {
-    all = {
-      ip_protocol = "-1"
-      cidr_ipv4   = "0.0.0.0/0"
+  # Load balancer
+  load_balancer = {
+    service = {
+      target_group_arn = aws_lb_target_group.this.arn
+      container_name   = var.name
+      container_port   = var.container_port
     }
   }
 
-  # Auto-scaling
-  # ALBRequestCountPerTarget can drive scale-in to 0 (CPU cannot — needs tasks to measure).
-  # Scale out when > 10 req/target/min, scale in to 0 when idle.
-  # scale_in_cooldown: 300s avoids flapping on bursty traffic.
-  scaling_target = {
-    metric_type        = "ALBRequestCountPerTarget"
-    target_value       = var.scaling_target_value
-    min_task_count     = var.min_task_count
-    max_task_count     = var.max_task_count
-    scale_in_cooldown  = 300
-    scale_out_cooldown = 60
-  }
+  # IAM
+  task_exec_ssm_param_arns = var.ssm_param_arns
+  task_exec_secret_arns    = var.secret_arns
+  tasks_iam_role_statements = var.task_iam_statements
 
-  # IAM — grant access to SSM parameters and Secrets Manager
-  execution_ssm_param_arns = var.ssm_param_arns
-  execution_secret_arns    = var.secret_arns
-
-  # Task role — custom statements (e.g. SQS, S3 access)
-  task_iam_role_statements = var.task_iam_statements
-
-  # CloudWatch logs
   cloudwatch_log_group_retention_in_days = var.log_retention_days
 
   tags = var.tags
+}
+
+# ── Auto-scaling ──────────────────────────────────────────────────────────────
+
+resource "aws_appautoscaling_target" "this" {
+  service_namespace  = "ecs"
+  resource_id        = "service/${var.cluster_name}/${module.service.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  min_capacity       = var.min_task_count
+  max_capacity       = var.max_task_count
+
+  depends_on = [module.service]
+}
+
+resource "aws_appautoscaling_policy" "alb_requests" {
+  name               = "${var.name}-alb-requests"
+  service_namespace  = "ecs"
+  resource_id        = aws_appautoscaling_target.this.resource_id
+  scalable_dimension = aws_appautoscaling_target.this.scalable_dimension
+  policy_type        = "TargetTrackingScaling"
+
+  target_tracking_scaling_policy_configuration {
+    target_value       = var.scaling_target_value
+    scale_in_cooldown  = 300
+    scale_out_cooldown = 60
+    disable_scale_in   = false
+
+    predefined_metric_specification {
+      predefined_metric_type = "ALBRequestCountPerTarget"
+      # ALB ARN suffix + target group ARN suffix — required for this metric
+      resource_label = "${var.alb_arn_suffix}/${aws_lb_target_group.this.arn_suffix}"
+    }
+  }
 }

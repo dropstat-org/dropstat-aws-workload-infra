@@ -4,7 +4,9 @@ locals {
   role_arn     = "arn:aws:iam::453531893227:role/TerraformCI"
   region       = "us-east-2"
 
-  log_retention_days = 7
+  log_retention_days         = 7
+  container_insights_enabled = false  # enable in prod
+  certificate_arn            = null   # set to ACM ARN when HTTPS is ready
 
   ecs = {
     dropstat_api = {
@@ -13,7 +15,11 @@ locals {
       desired_count        = 1
       min_task_count       = 0
       max_task_count       = 3
-      scaling_target_value = 10   # req/target/min — scales to 0 when idle
+      scaling_target_value = 10
+      container_port       = 8080
+      health_check_path    = "/actuator/health"
+      hostnames            = ["api-dev.dropstat.com"]
+      listener_priority    = 10
     }
     integrations_rest = {
       cpu                  = 256
@@ -22,6 +28,10 @@ locals {
       min_task_count       = 0
       max_task_count       = 2
       scaling_target_value = 10
+      container_port       = 8000
+      health_check_path    = "/health"
+      hostnames            = ["integrations-dev.dropstat.com"]
+      listener_priority    = 20
     }
     nursa = {
       cpu                  = 1024
@@ -30,6 +40,10 @@ locals {
       min_task_count       = 0
       max_task_count       = 3
       scaling_target_value = 10
+      container_port       = 8081
+      health_check_path    = "/api/version"
+      hostnames            = ["nursa-dev.dropstat.com"]
+      listener_priority    = 30
     }
   }
 
@@ -54,7 +68,6 @@ locals {
 
   queue_suffix = "-dev"
 
-  # Image tags — overridden by CI/CD pipeline via TF_VAR or terragrunt inputs
   image_tags = {
     dropstat_api      = "latest"
     integrations_rest = "latest"

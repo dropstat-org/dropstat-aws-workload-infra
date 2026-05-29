@@ -10,6 +10,11 @@ output "vpc_id" {
   value = module.config.vpc.id
 }
 
+output "public_subnet_ids" {
+  description = "Public subnets — ALB"
+  value       = [for s in module.config.subnets.publics : s.id]
+}
+
 output "private_subnet_ids" {
   description = "Workload subnets — ECS tasks, Lambda"
   value       = [for s in module.config.subnets.privates : s.id]
