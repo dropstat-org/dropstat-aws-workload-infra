@@ -1,20 +1,17 @@
 variable "zone_name" {
-  description = "Private hosted zone name to discover"
-  type        = string
-  default     = "aws.dropstat.internal"
-}
-
-variable "env" {
-  description = "Environment name used as subdomain prefix — e.g. dev, staging"
+  description = "Private hosted zone name to discover — e.g. aws.dropstat.internal"
   type        = string
 }
 
-variable "alb_dns_name" {
-  description = "Internal ALB DNS name — all service records point here"
-  type        = string
-}
-
-variable "aurora_endpoint" {
-  description = "Aurora cluster endpoint"
-  type        = string
+variable "records" {
+  description = <<-EOT
+    DNS records in terraform-aws-modules/route53/records format.
+    See: https://registry.terraform.io/modules/terraform-aws-modules/route53/aws/latest/submodules/records
+    Example:
+      records = [
+        { name = "api.dev", type = "CNAME", ttl = 60, records = ["internal-alb.us-east-2.elb.amazonaws.com"] },
+      ]
+  EOT
+  type    = any
+  default = []
 }
