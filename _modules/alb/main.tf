@@ -2,9 +2,10 @@ module "alb" {
   source  = "terraform-aws-modules/alb/aws"
   version = "~> 9.0"
 
-  name    = var.name
-  vpc_id  = var.vpc_id
-  subnets = var.public_subnet_ids
+  name     = var.name
+  vpc_id   = var.vpc_id
+  subnets  = var.private_subnet_ids
+  internal = true  # not internet-facing — API GW connects via VPC Link
 
   # Security group — allow HTTP/HTTPS inbound from internet
   security_group_ingress_rules = {

@@ -24,7 +24,7 @@ terraform {
 inputs = {
   name              = "dropstat-${local.env.locals.account_name}"
   vpc_id            = dependency.account.outputs.vpc_id
-  # ALB goes to public subnets — internet-facing
-  public_subnet_ids = dependency.account.outputs.public_subnet_ids
-  certificate_arn   = local.env.locals.certificate_arn
+  # ALB is internal — API Gateway connects via VPC Link
+  private_subnet_ids = dependency.account.outputs.private_subnet_ids
+  certificate_arn    = local.env.locals.certificate_arn
 }

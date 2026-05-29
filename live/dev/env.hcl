@@ -8,6 +8,14 @@ locals {
   container_insights_enabled = false  # enable in prod
   certificate_arn            = null   # set to ACM ARN when HTTPS is ready
 
+  apigw = {
+    domain_name            = null     # set to e.g. "api-dev.dropstat.com" when DNS is ready
+    throttling_burst_limit = 200      # lower in dev to avoid accidental runaway costs
+    throttling_rate_limit  = 500
+    waf_enabled            = false    # enable in prod — costs ~$5/mo base + per rule
+    waf_rate_limit         = 1000     # req per 5min per IP before blocking
+  }
+
   ecs = {
     dropstat_api = {
       cpu                  = 1024
