@@ -4,6 +4,33 @@ IaC para la capa de workload de Dropstat. Define la infraestructura de ECS, Auro
 
 ---
 
+## Premisa de diseño — terraform-aws-modules first
+
+**Todos los módulos deben usar `terraform-aws-modules` donde exista un módulo oficial.**
+Referencia de módulos disponibles: https://github.com/orgs/terraform-aws-modules/repositories
+
+Recursos sueltos (`resource "aws_*"`) solo se permiten cuando:
+1. No existe módulo oficial para ese servicio (ej. Amazon MQ → `aws_mq_broker`)
+2. El módulo oficial no expone el recurso necesario y no hay workaround limpio
+
+Security groups en particular deben usar `terraform-aws-modules/security-group/aws` en lugar de `resource "aws_security_group"` suelto.
+
+### Estado actual de cumplimiento
+
+| Módulo | Estado | Módulo TF a usar |
+|--------|--------|------------------|
+| `alb` | ✅ usa `terraform-aws-modules/alb/aws` | — |
+| `ecs-cluster` | ✅ usa `terraform-aws-modules/ecs/aws` | — |
+| `ecs-service` | ⚠️ parcial — SG migrado a `security-group` module. Pendiente: `aws_lb_target_group`, `aws_lb_listener_rule` (patrón dinámico por servicio, sin módulo que encaje), `aws_appautoscaling_*` (sin módulo oficial) | Sueltos restantes justificados |
+| `aurora` | ✅ usa `terraform-aws-modules/rds-aurora/aws` | — |
+| `elasticache` | ✅ usa `terraform-aws-modules/elasticache/aws` | — |
+| `sqs` | ✅ usa `terraform-aws-modules/sqs/aws` | — |
+| `apigw` | ⚠️ parcial — `module.apigw` usa TF modules pero `aws_security_group`, `aws_wafv2_web_acl`, `aws_wafv2_web_acl_association` son recursos sueltos | `terraform-aws-modules/security-group/aws`, `terraform-aws-modules/wafv2/aws` |
+| `mq` | ✅ justificado — no existe módulo oficial para Amazon MQ | recursos nativos aceptados |
+| `dns-records` | — pendiente revisar | — |
+
+---
+
 ## Repositorios relacionados
 
 | Repo | Qué hace |

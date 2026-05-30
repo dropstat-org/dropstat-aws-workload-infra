@@ -53,26 +53,28 @@ resource "aws_lb_listener_rule" "this" {
 }
 
 # ── Security group for ECS tasks ──────────────────────────────────────────────
+# terraform-aws-modules/security-group — no loose aws_security_group resources.
+# AppAutoScaling resources below remain native (no terraform-aws-modules equivalent).
 
-resource "aws_security_group" "tasks" {
+module "sg_tasks" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "~> 5.0"
+
   name        = "${var.name}-tasks"
-  description = "ECS tasks for ${var.name}"
+  description = "ECS tasks for ${var.name} — inbound from ALB only"
   vpc_id      = var.vpc_id
 
-  # Allow inbound from ALB only
-  ingress {
-    from_port       = var.container_port
-    to_port         = var.container_port
-    protocol        = "tcp"
-    security_groups = [var.alb_security_group_id]
-  }
+  ingress_with_source_security_group_id = [
+    {
+      from_port                = var.container_port
+      to_port                  = var.container_port
+      protocol                 = "tcp"
+      source_security_group_id = var.alb_security_group_id
+      description              = "Allow inbound from ALB"
+    }
+  ]
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  egress_rules = ["all-all"]
 
   tags = var.tags
 }
@@ -123,7 +125,7 @@ module "service" {
 
   # Networking
   subnet_ids = var.private_subnet_ids
-  security_group_ids = [aws_security_group.tasks.id]
+  security_group_ids = [module.sg_tasks.security_group_id]
   create_security_group = false
 
   # Load balancer
