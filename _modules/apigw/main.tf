@@ -26,24 +26,20 @@ module "apigw" {
     }
   }
 
-  # Integrations — one per service, forwarding to ALB via VPC Link
-  integrations = {
-    for svc_name, svc in var.services : "${svc.method} ${svc.route}" => {
-      integration_type    = "HTTP_PROXY"
-      integration_method  = svc.method
-      integration_uri     = var.alb_listener_arn
-      connection_type     = "VPC_LINK"
-      vpc_link            = "main"
-      request_parameters  = {
-        "overwrite:header.host" = svc.hostname
-      }
-    }
-  }
-
-  # Routes — one per service
+  # In apigateway-v2 module v5, integrations moved inside routes.
+  # Each route includes its integration inline under the "integration" key.
   routes = {
     for svc_name, svc in var.services : "${svc.method} ${svc.route}" => {
-      integration = "${svc.method} ${svc.route}"
+      integration = {
+        integration_type   = "HTTP_PROXY"
+        integration_method = svc.method
+        integration_uri    = var.alb_listener_arn
+        connection_type    = "VPC_LINK"
+        vpc_link_key       = "main"
+        request_parameters = {
+          "overwrite:header.host" = svc.hostname
+        }
+      }
     }
   }
 

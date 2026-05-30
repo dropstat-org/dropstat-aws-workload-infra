@@ -119,13 +119,14 @@ module "service" {
         }
       }
 
-      readonly_root_filesystem = false
+      readonly_root_filesystem               = false
+      cloudwatch_log_group_retention_in_days = var.log_retention_days
     }
   }
 
   # Networking
-  subnet_ids = var.private_subnet_ids
-  security_group_ids = [module.sg_tasks.security_group_id]
+  subnet_ids            = var.private_subnet_ids
+  security_group_ids    = [module.sg_tasks.security_group_id]
   create_security_group = false
 
   # Load balancer
@@ -141,11 +142,6 @@ module "service" {
   task_exec_ssm_param_arns  = var.ssm_param_arns
   task_exec_secret_arns     = var.secret_arns
   tasks_iam_role_statements = var.task_iam_statements
-
-  # In ECS module v6, log retention moved into container_definition_defaults
-  container_definition_defaults = {
-    cloudwatch_log_group_retention_in_days = var.log_retention_days
-  }
 
   # ── Auto-scaling — built-in via terraform-aws-modules/ecs service module ──
   # aws_appautoscaling_target + aws_appautoscaling_policy replaced by module.
