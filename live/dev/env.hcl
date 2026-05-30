@@ -10,49 +10,10 @@ locals {
 
   apigw = {
     domain_name            = null     # set to e.g. "api-dev.dropstat.com" when DNS is ready
-    throttling_burst_limit = 200      # lower in dev to avoid accidental runaway costs
+    throttling_burst_limit = 200
     throttling_rate_limit  = 500
     waf_enabled            = false    # enable in prod — costs ~$5/mo base + per rule
     waf_rate_limit         = 1000     # req per 5min per IP before blocking
-  }
-
-  ecs = {
-    dropstat_api = {
-      cpu                  = 1024
-      memory               = 2048
-      desired_count        = 1
-      min_task_count       = 0
-      max_task_count       = 3
-      scaling_target_value = 10
-      container_port       = 8080
-      health_check_path    = "/actuator/health"
-      hostnames            = ["api-dev.dropstat.com"]
-      listener_priority    = 10
-    }
-    integrations_rest = {
-      cpu                  = 256
-      memory               = 512
-      desired_count        = 1
-      min_task_count       = 0
-      max_task_count       = 2
-      scaling_target_value = 10
-      container_port       = 8000
-      health_check_path    = "/health"
-      hostnames            = ["integrations-dev.dropstat.com"]
-      listener_priority    = 20
-    }
-    nursa = {
-      cpu                  = 1024
-      memory               = 2048
-      desired_count        = 1
-      min_task_count       = 0
-      max_task_count       = 3
-      scaling_target_value = 10
-      container_port       = 8081
-      health_check_path    = "/api/version"
-      hostnames            = ["nursa-dev.dropstat.com"]
-      listener_priority    = 30
-    }
   }
 
   aurora = {
@@ -75,10 +36,4 @@ locals {
   }
 
   queue_suffix = "-dev"
-
-  image_tags = {
-    dropstat_api      = "latest"
-    integrations_rest = "latest"
-    nursa             = "latest"
-  }
 }
