@@ -13,8 +13,10 @@ module "apigw" {
   description   = "HTTP API for ${var.name}"
   protocol_type = "HTTP"
 
-  # Custom domain — one per service, all pointing to this gateway
-  domain_name                 = var.domain_name
+  # Custom domain — only create when domain_name is provided
+  # Module v5 fails with null in replace()/startswith() — guard with create flag
+  create_domain_name          = var.domain_name != null
+  domain_name                 = var.domain_name != null ? var.domain_name : ""
   domain_name_certificate_arn = var.certificate_arn
 
   # VPC Link — connects API GW to the internal ALB
