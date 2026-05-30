@@ -30,42 +30,36 @@ module "alb" {
     }
   }
 
+  # ALB module v9: action type is a top-level key on the listener object,
+  # not nested under "action". Use redirect/fixed_response/forward directly.
   listeners = merge(
     {
-      http = {
-        port     = 80
-        protocol = "HTTP"
-        # Redirect to HTTPS if certificate provided, otherwise forward to default
-        action = merge(
-          { type = var.certificate_arn != null ? "redirect" : "fixed-response" },
-          var.certificate_arn != null ? {
-            redirect = {
-              port        = "443"
-              protocol    = "HTTPS"
-              status_code = "HTTP_301"
-            }
-          } : {
-            fixed_response = {
-              content_type = "text/plain"
-              message_body = "no route"
-              status_code  = "404"
-            }
+      http = merge(
+        { port = 80, protocol = "HTTP" },
+        var.certificate_arn != null ? {
+          redirect = {
+            port        = "443"
+            protocol    = "HTTPS"
+            status_code = "HTTP_301"
           }
-        )
-      }
+        } : {
+          fixed_response = {
+            content_type = "text/plain"
+            message_body = "no route"
+            status_code  = "404"
+          }
+        }
+      )
     },
     var.certificate_arn != null ? {
       https = {
         port            = 443
         protocol        = "HTTPS"
         certificate_arn = var.certificate_arn
-        action = {
-          type             = "fixed-response"
-          fixed_response = {
-            content_type = "text/plain"
-            message_body = "no route"
-            status_code  = "404"
-          }
+        fixed_response = {
+          content_type = "text/plain"
+          message_body = "no route"
+          status_code  = "404"
         }
       }
     } : {}
