@@ -83,7 +83,7 @@ module "sg_tasks" {
 
 module "service" {
   source  = "terraform-aws-modules/ecs/aws//modules/service"
-  version = "~> 5.12"
+  version = "~> 6.0"
 
   name        = var.name
   cluster_arn = var.cluster_arn
