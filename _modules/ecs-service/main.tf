@@ -142,7 +142,10 @@ module "service" {
   task_exec_secret_arns     = var.secret_arns
   tasks_iam_role_statements = var.task_iam_statements
 
-  cloudwatch_log_group_retention_in_days = var.log_retention_days
+  # In ECS module v6, log retention moved into container_definition_defaults
+  container_definition_defaults = {
+    cloudwatch_log_group_retention_in_days = var.log_retention_days
+  }
 
   # ── Auto-scaling — built-in via terraform-aws-modules/ecs service module ──
   # aws_appautoscaling_target + aws_appautoscaling_policy replaced by module.
