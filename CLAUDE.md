@@ -21,12 +21,12 @@ Security groups en particular deben usar `terraform-aws-modules/security-group/a
 |--------|--------|------------------|
 | `alb` | ✅ usa `terraform-aws-modules/alb/aws` | — |
 | `ecs-cluster` | ✅ usa `terraform-aws-modules/ecs/aws` | — |
-| `ecs-service` | ⚠️ parcial — SG migrado a `security-group` module. Pendiente: `aws_lb_target_group`, `aws_lb_listener_rule` (patrón dinámico por servicio, sin módulo que encaje), `aws_appautoscaling_*` (sin módulo oficial) | Sueltos restantes justificados |
+| `ecs-service` | ✅ SG → `security-group` module. Autoscaling → nativo en `terraform-aws-modules/ecs` service. Sueltos justificados: `aws_lb_target_group/rule` (patrón dinámico por servicio) | — |
 | `aurora` | ✅ usa `terraform-aws-modules/rds-aurora/aws` | — |
 | `elasticache` | ✅ usa `terraform-aws-modules/elasticache/aws` | — |
 | `sqs` | ✅ usa `terraform-aws-modules/sqs/aws` | — |
-| `apigw` | ⚠️ parcial — `module.apigw` usa TF modules pero `aws_security_group`, `aws_wafv2_web_acl`, `aws_wafv2_web_acl_association` son recursos sueltos | `terraform-aws-modules/security-group/aws`, `terraform-aws-modules/wafv2/aws` |
-| `mq` | ✅ justificado — no existe módulo oficial para Amazon MQ | recursos nativos aceptados |
+| `apigw` | ✅ SG VPC Link → `security-group` module. Sueltos justificados: `aws_wafv2_web_acl/association` (no existe `terraform-aws-modules/wafv2`) | — |
+| `mq` | ✅ SG → `security-group` module. `aws_mq_broker` justificado (no existe módulo oficial) | — |
 | `dns-records` | — pendiente revisar | — |
 
 ---

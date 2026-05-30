@@ -138,44 +138,34 @@ module "service" {
   }
 
   # IAM
-  task_exec_ssm_param_arns = var.ssm_param_arns
-  task_exec_secret_arns    = var.secret_arns
+  task_exec_ssm_param_arns  = var.ssm_param_arns
+  task_exec_secret_arns     = var.secret_arns
   tasks_iam_role_statements = var.task_iam_statements
 
   cloudwatch_log_group_retention_in_days = var.log_retention_days
 
-  tags = var.tags
-}
+  # ── Auto-scaling — built-in via terraform-aws-modules/ecs service module ──
+  # aws_appautoscaling_target + aws_appautoscaling_policy replaced by module.
+  # ALBRequestCountPerTarget requires resource_label = alb_arn_suffix/tg_arn_suffix.
+  enable_autoscaling       = true
+  autoscaling_min_capacity = var.min_task_count
+  autoscaling_max_capacity = var.max_task_count
 
-# ── Auto-scaling ──────────────────────────────────────────────────────────────
-
-resource "aws_appautoscaling_target" "this" {
-  service_namespace  = "ecs"
-  resource_id        = "service/${var.cluster_name}/${module.service.name}"
-  scalable_dimension = "ecs:service:DesiredCount"
-  min_capacity       = var.min_task_count
-  max_capacity       = var.max_task_count
-
-  depends_on = [module.service]
-}
-
-resource "aws_appautoscaling_policy" "alb_requests" {
-  name               = "${var.name}-alb-requests"
-  service_namespace  = "ecs"
-  resource_id        = aws_appautoscaling_target.this.resource_id
-  scalable_dimension = aws_appautoscaling_target.this.scalable_dimension
-  policy_type        = "TargetTrackingScaling"
-
-  target_tracking_scaling_policy_configuration {
-    target_value       = var.scaling_target_value
-    scale_in_cooldown  = 300
-    scale_out_cooldown = 60
-    disable_scale_in   = false
-
-    predefined_metric_specification {
-      predefined_metric_type = "ALBRequestCountPerTarget"
-      # ALB ARN suffix + target group ARN suffix — required for this metric
-      resource_label = "${var.alb_arn_suffix}/${aws_lb_target_group.this.arn_suffix}"
+  autoscaling_policies = {
+    alb_requests = {
+      policy_type = "TargetTrackingScaling"
+      target_tracking_scaling_policy_configuration = {
+        target_value       = var.scaling_target_value
+        scale_in_cooldown  = 300
+        scale_out_cooldown = 60
+        disable_scale_in   = false
+        predefined_metric_specification = {
+          predefined_metric_type = "ALBRequestCountPerTarget"
+          resource_label         = "${var.alb_arn_suffix}/${aws_lb_target_group.this.arn_suffix}"
+        }
+      }
     }
   }
+
+  tags = var.tags
 }

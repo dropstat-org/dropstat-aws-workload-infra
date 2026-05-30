@@ -22,7 +22,7 @@ module "apigw" {
     main = {
       name               = "${var.name}-vpc-link"
       subnet_ids         = var.private_subnet_ids
-      security_group_ids = [aws_security_group.vpc_link.id]
+      security_group_ids = [module.sg_vpc_link.security_group_id]
     }
   }
 
@@ -58,26 +58,33 @@ module "apigw" {
 }
 
 # ── Security group for VPC Link ───────────────────────────────────────────────
-# Allows API GW to reach the internal ALB on ports 80/443
+# terraform-aws-modules/security-group — allows API GW to reach internal ALB.
+# WAF resources below remain native (no terraform-aws-modules/wafv2 exists in the org).
 
-resource "aws_security_group" "vpc_link" {
+module "sg_vpc_link" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "~> 5.0"
+
   name        = "${var.name}-vpc-link"
-  description = "API Gateway VPC Link — allows traffic to internal ALB"
+  description = "API Gateway VPC Link — allows egress to internal ALB on 80/443"
   vpc_id      = var.vpc_id
 
-  egress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  egress_with_cidr_blocks = [
+    {
+      from_port   = 80
+      to_port     = 80
+      protocol    = "tcp"
+      cidr_blocks = "0.0.0.0/0"
+      description = "HTTP to ALB"
+    },
+    {
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      cidr_blocks = "0.0.0.0/0"
+      description = "HTTPS to ALB"
+    },
+  ]
 
   tags = var.tags
 }

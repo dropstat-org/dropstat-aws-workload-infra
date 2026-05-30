@@ -6,4 +6,4 @@ output "mqtt_endpoint" {
 output "console_url" {
   value = aws_mq_broker.this.instances[0].console_url
 }
-output "security_group_id" { value = aws_security_group.mq.id }
+output "security_group_id" { value = module.sg_mq.security_group_id }
