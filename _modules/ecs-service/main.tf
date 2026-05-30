@@ -141,7 +141,9 @@ module "service" {
   # IAM
   task_exec_ssm_param_arns  = var.ssm_param_arns
   task_exec_secret_arns     = var.secret_arns
-  tasks_iam_role_statements = var.task_iam_statements
+  # ECS module v6: tasks_iam_role_statements is list(object), not map.
+  # Convert map { key = {effect,actions,resources} } → list of statement objects.
+  tasks_iam_role_statements = [for k, v in var.task_iam_statements : v]
 
   # ── Auto-scaling — built-in via terraform-aws-modules/ecs service module ──
   # aws_appautoscaling_target + aws_appautoscaling_policy replaced by module.
