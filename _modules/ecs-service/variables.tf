@@ -58,14 +58,6 @@ variable "scaling_target_value" {
   default     = 10
 }
 
-variable "vpc_id" {
-  type = string
-}
-
-variable "private_subnet_ids" {
-  type = list(string)
-}
-
 variable "alb_security_group_id" {
   description = "ALB security group — tasks only accept traffic from here"
   type        = string

@@ -5,6 +5,10 @@
 # VPC Link connects API GW to the internal ALB in private subnets.
 # ============================================================
 
+module "account" {
+  source = "git::https://github.com/dropstat-org/tm-aws-account-data.git?ref=master"
+}
+
 module "apigw" {
   source  = "terraform-aws-modules/apigateway-v2/aws"
   version = "~> 5.0"
@@ -23,7 +27,7 @@ module "apigw" {
   vpc_links = {
     main = {
       name               = "${var.name}-vpc-link"
-      subnet_ids         = var.private_subnet_ids
+      subnet_ids         = [for s in module.account.subnets.privates : s.id]
       security_group_ids = [module.sg_vpc_link.security_group_id]
     }
   }
@@ -65,7 +69,7 @@ module "sg_vpc_link" {
 
   name        = "${var.name}-vpc-link"
   description = "API Gateway VPC Link — allows egress to internal ALB on 80/443"
-  vpc_id      = var.vpc_id
+  vpc_id      = module.account.vpc.id
 
   egress_with_cidr_blocks = [
     {

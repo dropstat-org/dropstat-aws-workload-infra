@@ -1,15 +1,4 @@
-variable "name" {
-  type = string
-}
-
-variable "vpc_id" {
-  type = string
-}
-
-variable "private_subnet_ids" {
-  description = "Private subnets for VPC Link ENIs"
-  type        = list(string)
-}
+variable "name" { type = string }
 
 variable "alb_listener_arn" {
   description = "Internal ALB listener ARN — VPC Link forwards traffic here"
@@ -28,15 +17,6 @@ variable "certificate_arn" {
   default     = null
 }
 
-# Services map — defines routes and hostnames for ALB host-based routing
-# Example:
-# services = {
-#   dropstat_api = {
-#     method   = "ANY"
-#     route    = "/api/{proxy+}"
-#     hostname = "dropstat-api.dev.internal"
-#   }
-# }
 variable "services" {
   type = map(object({
     method   = string
@@ -46,15 +26,13 @@ variable "services" {
 }
 
 variable "throttling_burst_limit" {
-  description = "Max concurrent requests (burst)"
-  type        = number
-  default     = 500
+  type    = number
+  default = 500
 }
 
 variable "throttling_rate_limit" {
-  description = "Steady-state requests per second"
-  type        = number
-  default     = 1000
+  type    = number
+  default = 1000
 }
 
 variable "waf_enabled" {
@@ -63,9 +41,8 @@ variable "waf_enabled" {
 }
 
 variable "waf_rate_limit" {
-  description = "Max requests per 5 minutes per IP before blocking"
-  type        = number
-  default     = 1000
+  type    = number
+  default = 1000
 }
 
 variable "tags" {

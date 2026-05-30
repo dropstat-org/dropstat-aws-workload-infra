@@ -4,6 +4,10 @@
 # Replaces prod db.m5.4xlarge for dev/staging/prod
 # ============================================================
 
+module "account" {
+  source = "git::https://github.com/dropstat-org/tm-aws-account-data.git?ref=master"
+}
+
 module "aurora" {
   source  = "terraform-aws-modules/rds-aurora/aws"
   version = "~> 9.0"
@@ -22,10 +26,10 @@ module "aurora" {
     max_capacity = var.max_capacity
   }
 
-  vpc_id               = var.vpc_id
+  vpc_id               = module.account.vpc.id
   db_subnet_group_name = var.db_subnet_group_name
   create_db_subnet_group = var.db_subnet_group_name == null ? true : false
-  subnets              = var.subnet_ids
+  subnets              = [for s in module.account.subnets.data : s.id]
 
   security_group_rules = {
     ecs_ingress = {

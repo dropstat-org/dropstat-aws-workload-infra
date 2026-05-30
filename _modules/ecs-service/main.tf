@@ -4,6 +4,10 @@
 # ALB and cluster are created separately and passed in.
 # ============================================================
 
+module "account" {
+  source = "git::https://github.com/dropstat-org/tm-aws-account-data.git?ref=master"
+}
+
 locals {
   listener_arn = var.https_listener_arn != null ? var.https_listener_arn : var.http_listener_arn
 }
@@ -15,7 +19,7 @@ resource "aws_lb_target_group" "this" {
   port        = var.container_port
   protocol    = "HTTP"
   target_type = "ip"
-  vpc_id      = var.vpc_id
+  vpc_id      = module.account.vpc.id
 
   health_check {
     path                = var.health_check_path
@@ -62,7 +66,7 @@ module "sg_tasks" {
 
   name        = "${var.name}-tasks"
   description = "ECS tasks for ${var.name} — inbound from ALB only"
-  vpc_id      = var.vpc_id
+  vpc_id      = module.account.vpc.id
 
   ingress_with_source_security_group_id = [
     {
@@ -125,7 +129,7 @@ module "service" {
   }
 
   # Networking
-  subnet_ids            = var.private_subnet_ids
+  subnet_ids            = [for s in module.account.subnets.privates : s.id]
   security_group_ids    = [module.sg_tasks.security_group_id]
   create_security_group = false
 

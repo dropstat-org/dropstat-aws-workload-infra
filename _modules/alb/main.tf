@@ -1,10 +1,14 @@
+module "account" {
+  source = "git::https://github.com/dropstat-org/tm-aws-account-data.git?ref=master"
+}
+
 module "alb" {
   source  = "terraform-aws-modules/alb/aws"
   version = "~> 9.0"
 
   name     = var.name
-  vpc_id   = var.vpc_id
-  subnets  = var.private_subnet_ids
+  vpc_id   = module.account.vpc.id
+  subnets  = [for s in module.account.subnets.privates : s.id]
   internal = true  # not internet-facing — API GW connects via VPC Link
 
   # Security group — allow HTTP/HTTPS inbound from internet

@@ -1,7 +1,11 @@
 # ============================================================
 # _modules/elasticache
-# Redis — replaces Redis sidecar in ECS task definitions
+# Redis — VPC and subnets discovered via tm-aws-account-data
 # ============================================================
+
+module "account" {
+  source = "git::https://github.com/dropstat-org/tm-aws-account-data.git?ref=master"
+}
 
 module "elasticache" {
   source  = "terraform-aws-modules/elasticache/aws"
@@ -16,8 +20,8 @@ module "elasticache" {
   num_cache_nodes = var.num_cache_nodes
   port            = 6379
 
-  vpc_id     = var.vpc_id
-  subnet_ids = var.subnet_ids
+  vpc_id     = module.account.vpc.id
+  subnet_ids = [for s in module.account.subnets.data : s.id]
 
   security_group_rules = {
     ecs_ingress = {
@@ -29,7 +33,6 @@ module "elasticache" {
   apply_immediately          = true
   auto_minor_version_upgrade = true
 
-  # Backups — disable for dev, enable for prod
   snapshot_retention_limit = var.snapshot_retention_limit
 
   tags = var.tags
