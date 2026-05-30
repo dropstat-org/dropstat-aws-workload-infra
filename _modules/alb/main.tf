@@ -36,19 +36,22 @@ module "alb" {
         port     = 80
         protocol = "HTTP"
         # Redirect to HTTPS if certificate provided, otherwise forward to default
-        action = {
-          type = var.certificate_arn != null ? "redirect" : "fixed-response"
-          redirect = var.certificate_arn != null ? {
-            port        = "443"
-            protocol    = "HTTPS"
-            status_code = "HTTP_301"
-          } : null
-          fixed_response = var.certificate_arn != null ? null : {
-            content_type = "text/plain"
-            message_body = "no route"
-            status_code  = "404"
+        action = merge(
+          { type = var.certificate_arn != null ? "redirect" : "fixed-response" },
+          var.certificate_arn != null ? {
+            redirect = {
+              port        = "443"
+              protocol    = "HTTPS"
+              status_code = "HTTP_301"
+            }
+          } : {
+            fixed_response = {
+              content_type = "text/plain"
+              message_body = "no route"
+              status_code  = "404"
+            }
           }
-        }
+        )
       }
     },
     var.certificate_arn != null ? {

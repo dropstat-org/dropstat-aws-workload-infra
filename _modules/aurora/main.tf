@@ -29,8 +29,8 @@ module "aurora" {
 
   security_group_rules = {
     ecs_ingress = {
-      source_security_group_id = var.ecs_security_group_id
-      description              = "Allow MySQL from ECS tasks"
+      referenced_security_group_id = var.ecs_security_group_id
+      description                  = "Allow MySQL from ECS tasks"
     }
   }
 
