@@ -51,6 +51,12 @@ variable "backup_retention_period" {
   default = 7
 }
 
+variable "snapshot_identifier" {
+  description = "ARN or identifier of a DB snapshot to restore from. When set, database_name and master_username are ignored (taken from the snapshot)."
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

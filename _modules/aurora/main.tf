@@ -38,8 +38,12 @@ module "aurora" {
     }
   }
 
-  database_name   = var.database_name
-  master_username = var.master_username
+  # When restoring from a snapshot, database_name and master_username
+  # are inherited from the snapshot — passing them would cause an error.
+  database_name   = var.snapshot_identifier == null ? var.database_name   : null
+  master_username = var.snapshot_identifier == null ? var.master_username  : null
+
+  snapshot_identifier = var.snapshot_identifier
 
   storage_encrypted   = true
   skip_final_snapshot = var.skip_final_snapshot
