@@ -109,9 +109,12 @@ module "service" {
       memory    = var.memory
       essential = true
 
-      port_mappings = [{
-        container_port = var.container_port
-        protocol       = "tcp"
+      # portMappings in camelCase passes through directly to the container definition
+      # JSON as an "unknown" key (the ECS service module v6 does not forward the
+      # snake_case port_mappings from container_definitions to the submodule correctly).
+      portMappings = [{
+        containerPort = var.container_port
+        protocol      = "tcp"
       }]
 
       environment = var.environment_vars
