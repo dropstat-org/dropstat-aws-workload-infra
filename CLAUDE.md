@@ -1,278 +1,113 @@
 # dropstat-aws-workload-infra
 
-IaC para la capa de workload de Dropstat. Define la infraestructura de ECS, Aurora, Redis, MQ, SQS, ALB y API Gateway. **No contiene pipelines de deploy de imágenes** — eso vive en cada repo de servicio.
+**Librería de módulos Terraform** para la capa de workload de Dropstat.
+Este repo contiene SOLO módulos (`_modules/`) — no tiene `live/` ni Terragrunt configs.
+Los despliegues reales viven en `dropstat-aws-workload-deploy`.
+
+**Visibilidad:** Público (módulos Terraform no tienen secretos).
+
+---
+
+## Arquitectura de módulos
+
+```
+dropstat-aws-workload-infra/  ← módulos Terraform (público)
+└── _modules/
+    ├── alb/          ← ALB interno via terraform-aws-modules/alb ~> 9.0
+    ├── apigw/        ← API Gateway HTTP v2 via terraform-aws-modules/apigateway-v2 ~> 5.0
+    ├── aurora/       ← Aurora Serverless v2 via terraform-aws-modules/rds-aurora ~> 9.0
+    ├── dns-records/  ← Route53 records via terraform-aws-modules/route53 (módulo records)
+    ├── ecs-cluster/  ← ECS cluster via terraform-aws-modules/ecs ~> 6.0
+    ├── ecs-service/  ← ECS Fargate service via terraform-aws-modules/ecs//modules/service ~> 6.0
+    ├── elasticache/  ← Redis via terraform-aws-modules/elasticache ~> 1.0
+    ├── mq/           ← Amazon MQ (ActiveMQ) — recursos nativos (sin módulo oficial)
+    └── sqs/          ← SQS queues via terraform-aws-modules/sqs ~> 4.0
+```
 
 ---
 
 ## Premisa de diseño — terraform-aws-modules first
 
-**Todos los módulos deben usar `terraform-aws-modules` donde exista un módulo oficial.**
-Referencia de módulos disponibles: https://github.com/orgs/terraform-aws-modules/repositories
+**Todos los módulos usan `terraform-aws-modules` donde existe módulo oficial.**
+Recursos sueltos (`resource "aws_*"`) solo cuando no hay alternativa.
 
-Recursos sueltos (`resource "aws_*"`) solo se permiten cuando:
-1. No existe módulo oficial para ese servicio (ej. Amazon MQ → `aws_mq_broker`)
-2. El módulo oficial no expone el recurso necesario y no hay workaround limpio
-
-Security groups en particular deben usar `terraform-aws-modules/security-group/aws` en lugar de `resource "aws_security_group"` suelto.
-
-### Estado actual de cumplimiento
-
-| Módulo | Estado | Módulo TF a usar |
-|--------|--------|------------------|
-| `alb` | ✅ usa `terraform-aws-modules/alb/aws` | — |
-| `ecs-cluster` | ✅ usa `terraform-aws-modules/ecs/aws` | — |
-| `ecs-service` | ✅ SG → `security-group` module. Autoscaling → nativo en `terraform-aws-modules/ecs` service. Sueltos justificados: `aws_lb_target_group/rule` (patrón dinámico por servicio) | — |
-| `aurora` | ✅ usa `terraform-aws-modules/rds-aurora/aws` | — |
-| `elasticache` | ✅ usa `terraform-aws-modules/elasticache/aws` | — |
-| `sqs` | ✅ usa `terraform-aws-modules/sqs/aws` | — |
-| `apigw` | ✅ SG VPC Link → `security-group` module. Sueltos justificados: `aws_wafv2_web_acl/association` (no existe `terraform-aws-modules/wafv2`) | — |
-| `mq` | ✅ SG → `security-group` module. `aws_mq_broker` justificado (no existe módulo oficial) | — |
-| `dns-records` | — pendiente revisar | — |
+| Módulo | Estado |
+|--------|--------|
+| `alb` | ✅ terraform-aws-modules/alb v9 |
+| `apigw` | ✅ terraform-aws-modules/apigateway-v2 v5. WAF: recursos nativos (sin módulo oficial) |
+| `aurora` | ✅ terraform-aws-modules/rds-aurora v9 |
+| `ecs-cluster` | ✅ terraform-aws-modules/ecs v6 |
+| `ecs-service` | ✅ terraform-aws-modules/ecs//modules/service v6 + security-group module |
+| `elasticache` | ✅ terraform-aws-modules/elasticache v1 |
+| `mq` | ✅ aws_mq_broker nativo (sin módulo), SG via security-group module |
+| `sqs` | ✅ terraform-aws-modules/sqs v4 |
 
 ---
 
-## Repositorios relacionados
+## Descubrimiento dinámico de VPC/Subnets — tm-aws-account-data
 
-| Repo | Qué hace |
-|------|----------|
-| `dropstat-org/dropstat-aws-workload-infra` | **Este repo** — IaC de workload (ECS cluster, ALB, API GW, Aurora, Redis, MQ, SQS) |
-| `dropstat-org/platform-infra` | IaC de plataforma (Organizations, SCPs, VPC, TGW, Identity Center, ECR) |
-| `dropstat-org/dropstat-api` | Servicio Java — compile + test + publish + deploy ECS |
-| `dropstat-org/integrations-rest` | Servicio Python — compile + test + publish + deploy ECS |
-| `dropstat-org/nursa` | Servicio Java — compile + test + publish + deploy ECS |
-
----
-
-## Arquitectura de red
-
-```
-Internet
-  └── API Gateway HTTP v2  (WAF adjunto en prod)
-       └── VPC Link (private subnets)
-            └── ALB interno (private subnets — no internet-facing)
-                 ├── /api/*          → ECS dropstat-api
-                 ├── /integrations/* → ECS integrations-rest
-                 └── /nursa/*        → ECS nursa
-                      └── Aurora Serverless v2  (data subnets)
-                      └── ElastiCache Redis     (data subnets)
-                      └── Amazon MQ             (private subnets)
-                      └── SQS queues
-```
-
-### Por qué ALB interno + API Gateway
-
-- Las cuentas workload (dev/prod) **no tienen subnets públicas** — solo la cuenta `network` tiene egress VPC con NAT y subnets públicas. Esto sigue el modelo hub-and-spoke de AWS Control Tower / AFT.
-- API Gateway es internet-facing (managed por AWS, no necesita subnets) y se conecta al ALB interno via **VPC Link**.
-- WAF adjunto a API GW cubre todos los servicios a la vez (OWASP, rate limiting, IP reputation).
-
-### Subnets por capa
-
-| Capa | Tag `subnet-type` | Qué vive aquí |
-|------|-------------------|---------------|
-| `workload` | `workload` | ECS tasks, MQ, ALB |
-| `data` | `data` | Aurora, ElastiCache |
-| `secu` | `secu` | TGW attachment ENIs |
-
-Descubierto automáticamente por `tm-aws-account-data` — sin IDs hardcodeados.
-
----
-
-## Estructura del repo
-
-```
-dropstat-aws-workload-infra/
-├── CLAUDE.md
-├── common_vars.yaml          ← ECR registry, repo names, MQ engine
-├── terragrunt.hcl            ← root: remote state + provider
-│
-├── _modules/                 ← módulos Terraform reutilizables
-│   ├── ecs-cluster/          ← ECS cluster (container insights on/off)
-│   ├── ecs-service/          ← ECS service + target group + ALB rule + AppAutoScaling
-│   ├── alb/                  ← ALB interno, host-based routing
-│   ├── apigw/                ← API Gateway HTTP v2 + VPC Link + WAF
-│   ├── aurora/               ← Aurora Serverless v2 MySQL 8.0
-│   ├── elasticache/          ← ElastiCache Redis
-│   ├── mq/                   ← Amazon MQ (ActiveMQ)
-│   └── sqs/                  ← SQS queues
-│
-└── live/
-    └── dev/                  ← cuenta dev (453531893227)
-        ├── env.hcl           ← sizing, config, hostnames, image tags
-        ├── _shared/          ← recursos compartidos por todos los servicios
-        │   ├── account-data/ ← VPC + subnets via tm-aws-account-data
-        │   ├── ecs-cluster/  ← un cluster para todos los servicios
-        │   ├── alb/          ← un ALB para todos los servicios
-        │   └── apigw/        ← un API GW con VPC Link + WAF
-        ├── ecs/
-        │   ├── dropstat-api/
-        │   ├── integrations-rest/
-        │   └── nursa/
-        ├── storage/
-        │   ├── aurora/
-        │   ├── elasticache/
-        │   └── sqs/
-        └── messaging/
-            └── mq/
-```
-
----
-
-## Módulo `tm-aws-account-data`
-
-**Repo:** `dropstat-org/tm-aws-account-data` (`v1.0.0`)
-
-Descubre la VPC y subnets del account actual por tags — sin remote state ni IDs hardcodeados. Todos los módulos hacen `dependency` sobre `_shared/account-data`.
+**Cada módulo** que necesita VPC/subnets tiene embebido `module "account"` que llama a `tm-aws-account-data`. Esto elimina la necesidad de pasar vpc_id/subnet_ids como variables — los módulos los descubren por tags en AWS al momento del plan/apply.
 
 ```hcl
-# Uso en cualquier terragrunt.hcl
-dependency "account" {
-  config_path = "../../_shared/account-data"
+# Patrón en cada módulo que necesita VPC
+module "account" {
+  source = "git::https://github.com/dropstat-org/tm-aws-account-data.git?ref=master"
 }
+# Uso: module.account.vpc.id, module.account.subnets.privates[*].id
+```
 
-inputs = {
-  vpc_id             = dependency.account.outputs.vpc_id
-  private_subnet_ids = dependency.account.outputs.private_subnet_ids  # ECS, MQ, ALB
-  data_subnet_ids    = dependency.account.outputs.data_subnet_ids      # Aurora, Redis
+Módulos con descubrimiento embebido: `alb`, `apigw`, `aurora`, `elasticache`, `mq`, `ecs-service`
+
+---
+
+## Cambios importantes aplicados
+
+### ECS module v6 (upgrade de v5.12)
+- Removido `inference_accelerator` — incompatible con AWS provider v6
+- `cloudwatch_log_group_retention_in_days` → dentro de `container_definitions` (no top-level)
+- `tasks_iam_role_statements` → `list(object)` en lugar de `map` (conversión automática en módulo)
+- `cluster_setting` → lista `[{}]` en lugar de objeto `{}`
+- Output `arn` → renombrado a `id` para el service ARN
+
+### ALB module v9
+- `listeners` usa action type como atributo top-level (`redirect`, `fixed_response`) — no hay `action` wrapper
+- Listener rule condicional: `count = local.listener_arn != null ? 1 : 0` — soporta estado inicial sin ALB
+
+### Security groups
+- Todos usan `terraform-aws-modules/security-group ~> 5.0`
+- `source_security_group_id` para aurora (módulo usa recurso legacy `aws_security_group_rule`)
+- `referenced_security_group_id` para elasticache (módulo usa `aws_vpc_security_group_ingress_rule`)
+
+### AWS provider v6 compatibility
+- `variables.tf`: expandidos a multi-línea (semicolons inválidos en v6)
+- WAF: `override_action { none {} }` y `action { block {} }` → multi-línea
+- apigateway-v2 v5: `integrations` + `routes` → routes con `integration` inline
+
+---
+
+## Referencia de módulos externos usados
+
+| Módulo | Versión | Registry |
+|--------|---------|----------|
+| terraform-aws-modules/alb | ~> 9.0 | https://registry.terraform.io/modules/terraform-aws-modules/alb/aws |
+| terraform-aws-modules/apigateway-v2 | ~> 5.0 | https://registry.terraform.io/modules/terraform-aws-modules/apigateway-v2/aws |
+| terraform-aws-modules/rds-aurora | ~> 9.0 | https://registry.terraform.io/modules/terraform-aws-modules/rds-aurora/aws |
+| terraform-aws-modules/ecs | ~> 6.0 | https://registry.terraform.io/modules/terraform-aws-modules/ecs/aws |
+| terraform-aws-modules/elasticache | ~> 1.0 | https://registry.terraform.io/modules/terraform-aws-modules/elasticache/aws |
+| terraform-aws-modules/security-group | ~> 5.0 | https://registry.terraform.io/modules/terraform-aws-modules/security-group/aws |
+| terraform-aws-modules/sqs | ~> 4.0 | https://registry.terraform.io/modules/terraform-aws-modules/sqs/aws |
+| terraform-aws-modules/route53 | ~> 4.0 | https://registry.terraform.io/modules/terraform-aws-modules/route53/aws |
+| tm-aws-account-data | master | https://github.com/dropstat-org/tm-aws-account-data |
+
+---
+
+## Cómo consumir los módulos (desde dropstat-aws-workload-deploy)
+
+```hcl
+# En cualquier terragrunt.hcl del deploy repo:
+terraform {
+  source = "github.com/dropstat-org/dropstat-aws-workload-infra//_modules/ecs-service?ref=master"
 }
 ```
 
----
-
-## Auto-scaling ECS — scale-to-zero
-
-Todos los servicios ECS usan `ALBRequestCountPerTarget` como métrica de scaling (no CPU, que no puede bajar a 0):
-
-| Config | Dev | Prod |
-|--------|-----|------|
-| `min_task_count` | `0` — scale to zero cuando idle | `1` — siempre disponible |
-| `max_task_count` | `2-3` | según carga |
-| `scaling_target_value` | `10` req/min/target | ajustar según tráfico |
-| `scale_in_cooldown` | `300s` — evita flapping | `300s` |
-| `scale_out_cooldown` | `60s` — respuesta rápida | `60s` |
-
-> **Cold start en dev:** escalar de 0 → 1 tarda ~30-60s en Fargate. Aceptable en dev, no en prod.
-
----
-
-## Configuración por ambiente — `env.hcl`
-
-Cada ambiente tiene su propio `env.hcl`. Los módulos son **idénticos** entre dev y prod, solo cambian los valores:
-
-```
-live/dev/env.hcl   ← ya existe
-live/prod/env.hcl  ← por crear
-```
-
-### Diferencias clave dev vs prod
-
-| Campo | Dev | Prod |
-|-------|-----|------|
-| `min_task_count` | `0` | `1` |
-| `container_insights_enabled` | `false` | `true` |
-| `certificate_arn` | `null` (HTTP) | ARN real de ACM |
-| `apigw.waf_enabled` | `false` | `true` |
-| `apigw.domain_name` | `null` | `api.dropstat.com` |
-| `aurora.skip_final_snapshot` | `true` | `false` |
-| `aurora.deletion_protection` | `false` | `true` |
-| `aurora.monitoring_interval` | `0` | `60` |
-| `aurora.performance_insights_enabled` | `false` | `true` |
-| `aurora.max_capacity` | `2.0 ACU` | revisar según carga |
-| `log_retention_days` | `7` | `30` |
-
----
-
-## Deploy de servicios — cómo funciona
-
-> **Este repo NO se toca en un deploy normal.** Un deploy de código es solo actualizar la imagen en ECS.
-
-### Flujo completo (rama `develop`)
-
-```
-Push a develop (en repo del servicio)
-  └── opscore.yml (gha-actions-core-lib)
-       ├── compile        → build artefacto
-       ├── unit_test      → tests
-       ├── trivy          → scan de vulnerabilidades
-       ├── publish        → build imagen + push ECR tag sha-xxxxxxx
-       ├── release        → promueve sha-xxx → :dev en ECR
-       └── deploy-dev     → deploy automático a dev (sin aprobación)
-            ├── aws-actions/amazon-ecr-login@v2
-            ├── aws-actions/amazon-ecs-render-task-definition@v1
-            │   └── inyecta nuevo image URI en task-def.json
-            └── aws-actions/amazon-ecs-deploy-task-definition@v2
-                └── registra nueva task def + rolling update ECS
-```
-
-### Deploy manual a prod (workflow_dispatch)
-
-```
-deploy.yml (manual, con aprobación)
-  ├── validate-confirm  → escribir "deploy" para confirmar
-  ├── validate-approver → verificar que el actor tiene permiso (gw-devops)
-  └── deploy → mismos pasos que dev, apuntando a cluster prod
-```
-
-### API Gateway — no necesita deploy de código
-
-API GW queda fijo (creado por Terraform). Solo cambia cuando hay cambios de infra (nuevas rutas, throttling, WAF). El deploy de código solo actualiza ECS — API GW no se toca.
-
-| Cambio | Quién lo maneja |
-|--------|----------------|
-| Nueva imagen Docker | Deploy workflow en repo del servicio |
-| Nueva ruta en API GW | PR en este repo (Terraform) |
-| Cambio de throttling | PR en este repo |
-| Cambio de variables de entorno | PR en este repo (env.hcl) |
-
-### Cada servicio tiene en su repo
-
-```
-dropstat-api/
-├── task-def.json          ← task definition base (sin imagen — la inyecta render action)
-├── action.yaml            ← stages para gha-actions-core-lib
-└── .github/workflows/
-    ├── opscore.yml        ← CI + auto-deploy a dev en push a develop
-    └── deploy.yml         ← deploy manual a prod con aprobación
-```
-
----
-
-## Orden de apply (primera vez)
-
-```
-1. _shared/account-data    → solo lee, no crea recursos
-2. _shared/ecs-cluster     → cluster ECS
-3. _shared/alb             → ALB interno
-4. storage/aurora          → Aurora Serverless v2
-5. storage/elasticache     → Redis
-6. storage/sqs             → queues
-7. messaging/mq            → Amazon MQ
-8. ecs/dropstat-api        → ECS service + target group + ALB rule
-9. ecs/integrations-rest   → ídem
-10. ecs/nursa              → ídem
-11. _shared/apigw          → API GW + VPC Link + WAF (depende de ALB listener)
-```
-
-> Después del primer apply de aurora, actualizar `ecs_security_group_id` en `storage/aurora/terragrunt.hcl` y `storage/elasticache/terragrunt.hcl` con el SG real de ECS.
-
----
-
-## Remote state
-
-```
-Bucket:  dropstat-tfstate-174917982419
-Region:  us-east-2
-Key:     {path_relative_to_include}/terraform.tfstate
-Lock:    dropstat-tfstate-lock (DynamoDB)
-```
-
----
-
-## TODOs pendientes
-
-- [ ] Crear `live/prod/env.hcl`
-- [ ] Actualizar `ecs_security_group_id` en aurora + elasticache tras primer apply
-- [ ] Configurar `certificate_arn` en `env.hcl` cuando ACM esté listo
-- [ ] Habilitar `waf_enabled = true` en prod env.hcl
-- [ ] Crear `task-def.json` en cada repo de servicio
-- [ ] Crear `opscore.yml` + `deploy.yml` en cada repo de servicio
-- [ ] Route 53: zona pública en management + zona privada en shared-services
+La rama `master` es la rama principal. Los módulos se referencian por `?ref=master` — sin PAT ni autenticación (repo público).
