@@ -110,8 +110,8 @@ module "service" {
       essential = true
 
       port_mappings = [{
-        containerPort = var.container_port
-        protocol      = "tcp"
+        container_port = var.container_port
+        protocol       = "tcp"
       }]
 
       environment = var.environment_vars

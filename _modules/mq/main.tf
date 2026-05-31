@@ -12,8 +12,9 @@ resource "aws_mq_broker" "this" {
   engine_type         = "ACTIVEMQ"
   engine_version      = var.engine_version
   host_instance_type  = var.instance_type
-  deployment_mode     = "SINGLE_INSTANCE"
-  publicly_accessible = var.publicly_accessible
+  deployment_mode              = "SINGLE_INSTANCE"
+  publicly_accessible          = var.publicly_accessible
+  auto_minor_version_upgrade   = true
 
   subnet_ids      = var.publicly_accessible ? null : [module.account.subnets.privates[0].id]
   security_groups = [module.sg_mq.security_group_id]

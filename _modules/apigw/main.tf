@@ -33,15 +33,18 @@ module "apigw" {
   }
 
   # In apigateway-v2 module v5, integrations moved inside routes.
-  # Each route includes its integration inline under the "integration" key.
+  # In apigateway-v2 module v5, key names inside routes.integration changed:
+  #   type   (not integration_type)
+  #   uri    (not integration_uri)
+  #   method (not integration_method)
   routes = {
     for svc_name, svc in var.services : "${svc.method} ${svc.route}" => {
       integration = {
-        integration_type   = "HTTP_PROXY"
-        integration_method = svc.method
-        integration_uri    = var.alb_listener_arn
-        connection_type    = "VPC_LINK"
-        vpc_link_key       = "main"
+        type            = "HTTP_PROXY"
+        method          = svc.method
+        uri             = var.alb_listener_arn
+        connection_type = "VPC_LINK"
+        vpc_link_key    = "main"
         request_parameters = {
           "overwrite:header.host" = svc.hostname
         }
