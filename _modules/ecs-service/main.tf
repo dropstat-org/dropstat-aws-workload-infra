@@ -68,7 +68,7 @@ module "sg_tasks" {
   version = "~> 5.0"
 
   name        = "${var.name}-tasks"
-  description = "ECS tasks for ${var.name} — inbound from ALB only"
+  description = "ECS tasks for ${var.name} - inbound from ALB only"
   vpc_id      = module.account.vpc.id
 
   ingress_with_source_security_group_id = [
@@ -150,7 +150,9 @@ module "service" {
   task_exec_secret_arns     = var.secret_arns
   # ECS module v6: tasks_iam_role_statements is list(object), not map.
   # Convert map { key = {effect,actions,resources} } → list of statement objects.
-  tasks_iam_role_statements = [for k, v in var.task_iam_statements : v]
+  # Only set when there are statements — empty list generates an invalid IAM policy
+  # with no Statement key, which AWS rejects with MalformedPolicyDocument.
+  tasks_iam_role_statements = length(var.task_iam_statements) > 0 ? [for k, v in var.task_iam_statements : v] : null
 
   # ── Auto-scaling — built-in via terraform-aws-modules/ecs service module ──
   # aws_appautoscaling_target + aws_appautoscaling_policy replaced by module.

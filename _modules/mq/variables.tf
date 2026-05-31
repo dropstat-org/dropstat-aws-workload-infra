@@ -12,7 +12,7 @@ variable "instance_type" {
 
 variable "engine_version" {
   type    = string
-  default = "5.17.6"
+  default = "5.18"
 }
 
 variable "publicly_accessible" {
