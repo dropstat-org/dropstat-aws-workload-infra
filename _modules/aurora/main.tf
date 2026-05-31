@@ -12,10 +12,14 @@ module "aurora" {
   source  = "terraform-aws-modules/rds-aurora/aws"
   version = "~> 9.0"
 
-  name            = var.name
-  engine          = "aurora-mysql"
-  engine_version  = "8.0"
-  instance_class  = "db.serverless"
+  name           = var.name
+  engine         = "aurora-mysql"
+  # When restoring from a snapshot, omit engine_version so Aurora auto-selects
+  # the version compatible with the snapshot. Specifying "8.0" resolves to the
+  # latest Aurora 8.0 release which may require a newer MySQL minor version than
+  # the snapshot's source (e.g. 8.0.44 < required 8.0.45 for aurora 3.10.3).
+  engine_version = var.snapshot_identifier == null ? "8.0" : null
+  instance_class = "db.serverless"
 
   instances = {
     writer = {}
