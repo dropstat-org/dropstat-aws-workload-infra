@@ -42,7 +42,7 @@ module "sg_mq" {
   version = "~> 5.0"
 
   name        = "${var.name}-mq"
-  description = "Amazon MQ — allow MQTT, AMQPS and Web Console from ECS"
+  description = "Amazon MQ - allow MQTT, AMQPS and Web Console from ECS"
   vpc_id      = module.account.vpc.id
 
   ingress_with_source_security_group_id = flatten([

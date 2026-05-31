@@ -68,7 +68,7 @@ module "sg_vpc_link" {
   version = "~> 5.0"
 
   name        = "${var.name}-vpc-link"
-  description = "API Gateway VPC Link — allows egress to internal ALB on 80/443"
+  description = "API Gateway VPC Link - allows egress to internal ALB on 80/443"
   vpc_id      = module.account.vpc.id
 
   egress_with_cidr_blocks = [
