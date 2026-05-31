@@ -1,7 +1,11 @@
 # ============================================================
 # _modules/ecs-service
 # ECS Fargate service + target group + ALB listener rule + auto-scaling
-# ALB and cluster are created separately and passed in.
+#
+# The aws_ecs_task_definition is managed DIRECTLY (not via the ECS service
+# module's container_definitions handling) because the service module v6.12
+# does not correctly forward port_mappings to the container-definition
+# submodule. Using jsonencode() guarantees portMappings is always present.
 # ============================================================
 
 module "account" {
@@ -12,7 +16,152 @@ locals {
   listener_arn = var.https_listener_arn != null ? var.https_listener_arn : var.http_listener_arn
 }
 
-# ── Target group ──────────────────────────────────────────────────────────────
+# ── IAM — execution role (ECR pull + CloudWatch logs + Secrets) ───────────────
+
+data "aws_iam_policy_document" "task_exec_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:ecs:us-east-2:*:*"]
+    }
+  }
+}
+
+resource "aws_iam_role" "task_exec" {
+  name_prefix           = "${var.name}-exec-"
+  assume_role_policy    = data.aws_iam_policy_document.task_exec_assume.json
+  force_detach_policies = true
+  tags                  = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "task_exec_managed" {
+  role       = aws_iam_role.task_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_policy" "task_exec_secrets" {
+  count       = length(var.secret_arns) > 0 ? 1 : 0
+  name_prefix = "${var.name}-exec-secrets-"
+  description = "Allow ECS execution role to read Secrets Manager secrets"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "GetSecrets"
+      Effect   = "Allow"
+      Action   = "secretsmanager:GetSecretValue"
+      Resource = var.secret_arns
+    }]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "task_exec_secrets" {
+  count      = length(var.secret_arns) > 0 ? 1 : 0
+  role       = aws_iam_role.task_exec.name
+  policy_arn = aws_iam_policy.task_exec_secrets[0].arn
+}
+
+# ── IAM — task role (for app-level AWS API calls via task_iam_statements) ─────
+
+data "aws_iam_policy_document" "task_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "task" {
+  name_prefix           = "${var.name}-task-"
+  assume_role_policy    = data.aws_iam_policy_document.task_assume.json
+  force_detach_policies = true
+  tags                  = var.tags
+}
+
+resource "aws_iam_policy" "task" {
+  count       = length(var.task_iam_statements) > 0 ? 1 : 0
+  name_prefix = "${var.name}-task-"
+  description = "Task role permissions for ${var.name}"
+
+  policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [for k, v in var.task_iam_statements : v]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "task" {
+  count      = length(var.task_iam_statements) > 0 ? 1 : 0
+  role       = aws_iam_role.task.name
+  policy_arn = aws_iam_policy.task[0].arn
+}
+
+# ── CloudWatch log group ───────────────────────────────────────────────────────
+
+resource "aws_cloudwatch_log_group" "this" {
+  name              = "/aws/ecs/${var.name}/${var.name}"
+  retention_in_days = var.log_retention_days
+  tags              = var.tags
+}
+
+# ── Task definition ───────────────────────────────────────────────────────────
+# Using jsonencode() directly guarantees portMappings appears correctly.
+
+resource "aws_ecs_task_definition" "this" {
+  family                   = var.name
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = tostring(var.cpu)
+  memory                   = tostring(var.memory)
+  execution_role_arn       = aws_iam_role.task_exec.arn
+  task_role_arn            = aws_iam_role.task.arn
+
+  container_definitions = jsonencode([{
+    name      = var.name
+    image     = var.image
+    cpu       = var.cpu
+    memory    = var.memory
+    essential = true
+
+    portMappings = [{
+      containerPort = var.container_port
+      protocol      = "tcp"
+    }]
+
+    environment = var.environment_vars
+
+    secrets = var.secrets
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.this.name
+        "awslogs-region"        = "us-east-2"
+        "awslogs-stream-prefix" = "ecs"
+      }
+    }
+
+    readonlyRootFilesystem = false
+    stopTimeout            = 120
+  }])
+
+  tags = var.tags
+}
+
+# ── Target group ───────────────────────────────────────────────────────────────
 
 resource "aws_lb_target_group" "this" {
   name        = var.name
@@ -30,15 +179,12 @@ resource "aws_lb_target_group" "this" {
     matcher             = "200-299"
   }
 
-  # Allow draining before scale-in removes a task
   deregistration_delay = 30
 
   tags = var.tags
 }
 
 # ── ALB listener rule — host-based routing ────────────────────────────────────
-# count = 0 when listener_arn is null (ALB not yet deployed — env.hcl placeholder).
-# After first ALB apply, update env.hcl with real listener ARN.
 
 resource "aws_lb_listener_rule" "this" {
   count        = local.listener_arn != null ? 1 : 0
@@ -60,8 +206,6 @@ resource "aws_lb_listener_rule" "this" {
 }
 
 # ── Security group for ECS tasks ──────────────────────────────────────────────
-# terraform-aws-modules/security-group — no loose aws_security_group resources.
-# AppAutoScaling resources below remain native (no terraform-aws-modules equivalent).
 
 module "sg_tasks" {
   source  = "terraform-aws-modules/security-group/aws"
@@ -86,7 +230,7 @@ module "sg_tasks" {
   tags = var.tags
 }
 
-# ── ECS service ───────────────────────────────────────────────────────────────
+# ── ECS service (task definition provided externally) ─────────────────────────
 
 module "service" {
   source  = "terraform-aws-modules/ecs/aws//modules/service"
@@ -98,41 +242,19 @@ module "service" {
   cpu    = var.cpu
   memory = var.memory
 
-  desired_count                  = var.desired_count
+  desired_count                      = var.desired_count
   deployment_minimum_healthy_percent = 50
   deployment_maximum_percent         = 200
 
-  container_definitions = {
-    (var.name) = {
-      image     = var.image
-      cpu       = var.cpu
-      memory    = var.memory
-      essential = true
+  # Bypass the service module's task definition — we manage it directly above.
+  create_task_definition = false
+  task_definition_arn    = aws_ecs_task_definition.this.arn
 
-      # portMappings in camelCase passes through directly to the container definition
-      # JSON as an "unknown" key (the ECS service module v6 does not forward the
-      # snake_case port_mappings from container_definitions to the submodule correctly).
-      portMappings = [{
-        containerPort = var.container_port
-        protocol      = "tcp"
-      }]
-
-      environment = var.environment_vars
-      secrets     = var.secrets
-
-      log_configuration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = "/ecs/${var.name}"
-          awslogs-region        = "us-east-2"
-          awslogs-stream-prefix = "ecs"
-        }
-      }
-
-      readonly_root_filesystem               = false
-      cloudwatch_log_group_retention_in_days = var.log_retention_days
-    }
-  }
+  # Skip IAM role creation — we manage them above.
+  create_task_exec_iam_role = false
+  task_exec_iam_role_arn    = aws_iam_role.task_exec.arn
+  create_tasks_iam_role     = false
+  tasks_iam_role_arn        = aws_iam_role.task.arn
 
   # Networking
   subnet_ids            = [for s in module.account.subnets.privates : s.id]
@@ -148,18 +270,7 @@ module "service" {
     }
   }
 
-  # IAM
-  task_exec_ssm_param_arns  = var.ssm_param_arns
-  task_exec_secret_arns     = var.secret_arns
-  # ECS module v6: tasks_iam_role_statements is list(object), not map.
-  # Convert map { key = {effect,actions,resources} } → list of statement objects.
-  # Only set when there are statements — empty list generates an invalid IAM policy
-  # with no Statement key, which AWS rejects with MalformedPolicyDocument.
-  tasks_iam_role_statements = length(var.task_iam_statements) > 0 ? [for k, v in var.task_iam_statements : v] : null
-
-  # ── Auto-scaling — built-in via terraform-aws-modules/ecs service module ──
-  # aws_appautoscaling_target + aws_appautoscaling_policy replaced by module.
-  # ALBRequestCountPerTarget requires resource_label = alb_arn_suffix/tg_arn_suffix.
+  # Auto-scaling
   enable_autoscaling       = true
   autoscaling_min_capacity = var.min_task_count
   autoscaling_max_capacity = var.max_task_count
