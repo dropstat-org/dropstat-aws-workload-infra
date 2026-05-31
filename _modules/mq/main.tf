@@ -9,7 +9,7 @@ module "account" {
 
 resource "aws_mq_broker" "this" {
   broker_name         = var.name
-  engine_type         = "ACTIVEMQ"
+  engine_type         = "ActiveMQ"
   engine_version      = var.engine_version
   host_instance_type  = var.instance_type
   deployment_mode              = "SINGLE_INSTANCE"
