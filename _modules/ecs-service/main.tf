@@ -97,7 +97,11 @@ resource "aws_iam_policy" "task" {
 
   policy = jsonencode({
     Version   = "2012-10-17"
-    Statement = [for k, v in var.task_iam_statements : v]
+    Statement = [for k, v in var.task_iam_statements : {
+      Effect   = try(v.Effect, v.effect, "Allow")
+      Action   = try(v.Action, v.actions, [])
+      Resource = try(v.Resource, v.resources, ["*"])
+    }]
   })
 
   tags = var.tags
