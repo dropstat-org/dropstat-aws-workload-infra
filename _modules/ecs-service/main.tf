@@ -112,7 +112,9 @@ resource "aws_iam_role_policy_attachment" "task" {
 # ── CloudWatch log group ───────────────────────────────────────────────────────
 
 resource "aws_cloudwatch_log_group" "this" {
-  name              = "/aws/ecs/${var.name}/${var.name}"
+  # Use a single-segment path to avoid conflict with the old path
+  # (/aws/ecs/{name}/{name}) created by the ECS service module v6 submodule.
+  name              = "/aws/ecs/${var.name}"
   retention_in_days = var.log_retention_days
   tags              = var.tags
 }
