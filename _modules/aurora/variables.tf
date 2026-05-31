@@ -36,6 +36,11 @@ variable "deletion_protection" {
   default = false
 }
 
+variable "copy_tags_to_snapshot" {
+  type    = bool
+  default = false
+}
+
 variable "monitoring_interval" {
   type    = number
   default = 0

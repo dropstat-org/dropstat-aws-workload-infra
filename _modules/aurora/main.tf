@@ -49,9 +49,10 @@ module "aurora" {
 
   snapshot_identifier = var.snapshot_identifier
 
-  storage_encrypted   = true
-  skip_final_snapshot = var.skip_final_snapshot
-  deletion_protection = var.deletion_protection
+  storage_encrypted    = true
+  skip_final_snapshot  = var.skip_final_snapshot
+  deletion_protection  = var.deletion_protection
+  copy_tags_to_snapshot = var.copy_tags_to_snapshot
 
   # Enable enhanced monitoring + Performance Insights in prod
   monitoring_interval             = var.monitoring_interval
