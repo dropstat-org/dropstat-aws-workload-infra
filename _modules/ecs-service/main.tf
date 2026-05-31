@@ -37,8 +37,11 @@ resource "aws_lb_target_group" "this" {
 }
 
 # ── ALB listener rule — host-based routing ────────────────────────────────────
+# count = 0 when listener_arn is null (ALB not yet deployed — env.hcl placeholder).
+# After first ALB apply, update env.hcl with real listener ARN.
 
 resource "aws_lb_listener_rule" "this" {
+  count        = local.listener_arn != null ? 1 : 0
   listener_arn = local.listener_arn
   priority     = var.listener_rule_priority
 
