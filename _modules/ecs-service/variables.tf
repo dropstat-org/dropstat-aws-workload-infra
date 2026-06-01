@@ -128,3 +128,9 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "enable_execute_command" {
+  description = "Enable ECS Exec — allows interactive shell access to running containers via SSM. Useful for debugging. Default false."
+  type        = bool
+  default     = false
+}
