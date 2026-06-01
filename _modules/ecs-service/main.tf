@@ -277,6 +277,8 @@ module "service" {
   }
 
   # Auto-scaling
+  enable_execute_command   = var.enable_execute_command
+
   enable_autoscaling       = true
   autoscaling_min_capacity = var.min_task_count
   autoscaling_max_capacity = var.max_task_count
@@ -298,4 +300,28 @@ module "service" {
   }
 
   tags = var.tags
+}
+
+# ── ECS Exec — SSM permissions for task role ──────────────────────────────────
+# Required when enable_execute_command = true.
+# Allows SSM Session Manager to open an interactive shell in the container.
+resource "aws_iam_role_policy" "ecs_exec_ssm" {
+  count = var.enable_execute_command ? 1 : 0
+  name  = "${var.name}-ecs-exec-ssm"
+  role  = aws_iam_role.task.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ECSExec"
+      Effect = "Allow"
+      Action = [
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel",
+      ]
+      Resource = "*"
+    }]
+  })
 }
