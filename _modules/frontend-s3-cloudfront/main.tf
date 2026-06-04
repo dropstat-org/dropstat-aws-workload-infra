@@ -106,6 +106,7 @@ module "cloudfront" {
   # Key "s3" is referenced via origin_access_control_key in the origin block
   origin_access_control = {
     s3 = {
+      name             = "${var.name}-oac"   # unique per deployment e.g. desktop-dev-oac
       description      = "OAC for ${var.name} frontend"
       origin_type      = "s3"
       signing_behavior = "always"
@@ -115,8 +116,8 @@ module "cloudfront" {
 
   origin = {
     s3 = {
-      domain_name                = module.s3.s3_bucket_bucket_regional_domain_name
-      origin_access_control_key  = "s3"
+      domain_name               = module.s3.s3_bucket_bucket_regional_domain_name
+      origin_access_control_key = "s3"
     }
   }
 
