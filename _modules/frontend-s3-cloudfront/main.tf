@@ -26,7 +26,6 @@ module "s3" {
 
   bucket = var.bucket_name
 
-  # Block all public access — CloudFront uses OAC to read objects
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
@@ -44,7 +43,6 @@ module "s3" {
     }
   }
 
-  # Lifecycle: clean up old versions after 90 days
   lifecycle_rule = var.versioning_enabled ? [
     {
       id      = "expire-old-versions"
@@ -56,16 +54,6 @@ module "s3" {
   ] : []
 
   tags = local.tags
-}
-
-# ── CloudFront Origin Access Control ─────────────────────────────────────────
-
-resource "aws_cloudfront_origin_access_control" "this" {
-  name                              = "${var.name}-oac"
-  description                       = "OAC for ${var.name} frontend"
-  origin_access_control_origin_type = "s3"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
 }
 
 # ── S3 bucket policy — allow CloudFront OAC to read objects ──────────────────
@@ -99,6 +87,9 @@ resource "aws_s3_bucket_policy" "this" {
 }
 
 # ── CloudFront distribution ───────────────────────────────────────────────────
+# OAC is created by the cloudfront module internally via origin_access_control.
+# Do NOT create aws_cloudfront_origin_access_control directly — it would collide
+# with the module's internal resource since both use the same name.
 
 module "cloudfront" {
   source  = "terraform-aws-modules/cloudfront/aws"
@@ -108,13 +99,24 @@ module "cloudfront" {
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = var.default_root_object
-  price_class         = var.price_class  # PriceClass_100 = US/Europe only (cheapest)
-  aliases             = var.aliases      # e.g. ["desktop-dev.dropstat.com"]
+  price_class         = var.price_class
+  aliases             = var.aliases
+
+  # OAC managed by the module — avoids duplicate resource conflict
+  create_origin_access_control = true
+  origin_access_control = {
+    s3 = {
+      description      = "OAC for ${var.name} frontend"
+      origin_type      = "s3"
+      signing_behavior = "always"
+      signing_protocol = "sigv4"
+    }
+  }
 
   origin = {
     s3 = {
-      domain_name              = module.s3.s3_bucket_bucket_regional_domain_name
-      origin_access_control_id = aws_cloudfront_origin_access_control.this.id
+      domain_name           = module.s3.s3_bucket_bucket_regional_domain_name
+      origin_access_control = "s3"
     }
   }
 
@@ -125,7 +127,7 @@ module "cloudfront" {
     cached_methods         = ["GET", "HEAD"]
     compress               = true
 
-    cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6" # CachingOptimized (AWS managed)
+    cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6" # CachingOptimized
 
     function_association = var.spa_mode ? {
       viewer-request = {
@@ -134,7 +136,6 @@ module "cloudfront" {
     } : {}
   }
 
-  # Custom error pages for SPA (React/Vue router)
   custom_error_response = var.spa_mode ? [
     {
       error_code            = 404
@@ -162,8 +163,6 @@ module "cloudfront" {
 }
 
 # ── CloudFront Function — SPA client-side routing ────────────────────────────
-# Rewrites all paths to /index.html so React/Vue router handles navigation.
-# Only created when spa_mode = true.
 
 resource "aws_cloudfront_function" "spa_redirect" {
   count   = var.spa_mode ? 1 : 0
@@ -176,7 +175,6 @@ resource "aws_cloudfront_function" "spa_redirect" {
     function handler(event) {
       var request = event.request;
       var uri = request.uri;
-      // If the URI has no extension (not a file), serve index.html
       if (!uri.match(/\.[a-zA-Z0-9]+$/)) {
         request.uri = '/index.html';
       }
