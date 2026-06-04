@@ -90,3 +90,9 @@ output "mqtt_username" {
   description = "MQ username (not sensitive)"
   value       = "dropstat"
 }
+
+output "mqtt_password" {
+  description = "Auto-generated MQ password — passed to MQ module at apply time"
+  value       = random_password.mqtt.result
+  sensitive   = true
+}
