@@ -102,8 +102,8 @@ module "cloudfront" {
   price_class         = var.price_class
   aliases             = var.aliases
 
-  # OAC managed by the module — avoids duplicate resource conflict
-  create_origin_access_control = true
+  # OAC managed by the module via origin_access_control map
+  # Key "s3" is referenced via origin_access_control_key in the origin block
   origin_access_control = {
     s3 = {
       description      = "OAC for ${var.name} frontend"
@@ -115,8 +115,8 @@ module "cloudfront" {
 
   origin = {
     s3 = {
-      domain_name           = module.s3.s3_bucket_bucket_regional_domain_name
-      origin_access_control = "s3"
+      domain_name                = module.s3.s3_bucket_bucket_regional_domain_name
+      origin_access_control_key  = "s3"
     }
   }
 
