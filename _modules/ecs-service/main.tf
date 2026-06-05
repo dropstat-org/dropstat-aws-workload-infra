@@ -173,7 +173,7 @@ resource "aws_ecs_task_definition" "this" {
     ignore_changes = [container_definitions]
   }
 
-  container_definitions = jsonencode([{
+  container_definitions = jsonencode(concat([{
     name      = var.name
     image     = var.image
     cpu       = var.cpu
@@ -200,7 +200,7 @@ resource "aws_ecs_task_definition" "this" {
 
     readonlyRootFilesystem = false
     stopTimeout            = 120
-  }])
+  }], var.sidecar_containers))
 
   tags = var.tags
 }

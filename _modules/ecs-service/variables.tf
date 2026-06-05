@@ -140,3 +140,9 @@ variable "health_check_grace_period_seconds" {
   default     = 120
 }
 
+variable "sidecar_containers" {
+  description = "Additional containers to include in the task definition (e.g. redis sidecar). Each element is a full container definition object passed directly to jsonencode."
+  type        = any
+  default     = []
+}
+
