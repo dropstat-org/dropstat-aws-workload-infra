@@ -167,11 +167,13 @@ resource "aws_ecs_task_definition" "this" {
   execution_role_arn       = aws_iam_role.task_exec.arn
   task_role_arn            = aws_iam_role.task.arn
 
-  # image_tags in workload-deploy are only used on first deploy.
-  # Subsequent changes to var.image are ignored — CD pipelines own the image.
-  lifecycle {
-    ignore_changes = [container_definitions]
-  }
+  # NOTE: No lifecycle ignore_changes here.
+  # workload-deploy can register new task def revisions freely (for env var or
+  # sidecar updates). The ECS *service* won't switch to the new revision until
+  # the app CD pipeline deploys — because module.service uses active_task_def_arn
+  # (the currently running ARN), not this resource's ARN.
+  # On first deploy (service doesn't exist yet), active_task_def_arn is empty
+  # and the service starts with this task def directly.
 
   container_definitions = jsonencode(concat([{
     name      = var.name
