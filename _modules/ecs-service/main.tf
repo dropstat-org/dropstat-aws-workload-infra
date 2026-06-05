@@ -16,6 +16,38 @@ locals {
   listener_arn = var.https_listener_arn != null ? var.https_listener_arn : var.http_listener_arn
 }
 
+# ── Image ownership: CD pipeline is the source of truth for the image ─────────
+#
+# workload-deploy manages infra (env vars, IAM, sizing, networking).
+# App CD pipelines own the image tag (push new image → register task def → deploy).
+#
+# To prevent workload-deploy from reverting an image deployed by a CD pipeline,
+# we read the task definition ARN currently active on the ECS service.
+# If the service exists, we pass that ARN to the ECS service module — Terraform
+# never changes which revision is live. On first deploy (service doesn't exist),
+# we fall back to the task def we create below.
+data "external" "active_task_definition" {
+  program = ["bash", "-c", <<-EOT
+    ARN=$(aws ecs describe-services \
+      --cluster "${var.cluster_name}" \
+      --services "${var.name}" \
+      --region us-east-2 \
+      --query 'services[0].taskDefinition' \
+      --output text 2>/dev/null)
+    if [ -z "$ARN" ] || [ "$ARN" = "None" ] || [ "$ARN" = "null" ]; then
+      printf '{"arn":""}'
+    else
+      printf '{"arn":"%s"}' "$ARN"
+    fi
+  EOT
+  ]
+}
+
+locals {
+  # ARN of the task def currently running in ECS (empty string on first deploy).
+  active_task_def_arn = data.external.active_task_definition.result["arn"]
+}
+
 # ── IAM — execution role (ECR pull + CloudWatch logs + Secrets) ───────────────
 
 data "aws_iam_policy_document" "task_exec_assume" {
@@ -134,6 +166,12 @@ resource "aws_ecs_task_definition" "this" {
   memory                   = tostring(var.memory)
   execution_role_arn       = aws_iam_role.task_exec.arn
   task_role_arn            = aws_iam_role.task.arn
+
+  # image_tags in workload-deploy are only used on first deploy.
+  # Subsequent changes to var.image are ignored — CD pipelines own the image.
+  lifecycle {
+    ignore_changes = [container_definitions]
+  }
 
   container_definitions = jsonencode([{
     name      = var.name
@@ -254,8 +292,14 @@ module "service" {
   deployment_maximum_percent         = 200
 
   # Bypass the service module's task definition — we manage it directly above.
+  # Use the currently active task def ARN so workload-deploy never reverts the
+  # image deployed by app CD pipelines. Falls back to our own task def on first deploy.
   create_task_definition = false
-  task_definition_arn    = aws_ecs_task_definition.this.arn
+  task_definition_arn = (
+    local.active_task_def_arn != ""
+    ? local.active_task_def_arn
+    : aws_ecs_task_definition.this.arn
+  )
 
   # Skip IAM role creation — we manage them above.
   create_task_exec_iam_role = false
