@@ -35,14 +35,13 @@ module "aurora" {
   create_db_subnet_group = var.db_subnet_group_name == null ? true : false
   subnets              = [for s in module.account.subnets.data : s.id]
 
-  security_group_rules = merge(
-    {
-      for idx, sg_id in var.ecs_security_group_ids : "ecs_ingress_${idx}" => {
-        source_security_group_id = sg_id
-        description              = "Allow MySQL from ECS task SG ${idx}"
-      }
+  # Only services in private subnets can reach Aurora — more restrictive than VPC CIDR
+  security_group_rules = {
+    private_subnets = {
+      cidr_blocks = module.account.subnets.privates[*].cidr_block
+      description = "Allow MySQL from private subnets only"
     }
-  )
+  }
 
   # When restoring from a snapshot, database_name and master_username
   # are inherited from the snapshot â€” passing them would cause an error.
