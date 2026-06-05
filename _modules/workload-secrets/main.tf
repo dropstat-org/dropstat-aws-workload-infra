@@ -9,17 +9,17 @@
 #   - jwt_secret_key  → JWT signing key for dropstat-api
 #
 # Manual secrets (passed as variables, updated directly in
-# Secrets Manager after first apply):
+# Secrets Manager after first apply — Terraform ignores changes):
 #   - nursa_dropstat_password
 #   - nursa_dropstat_user
 #   - nursa_client_id
 #   - nursa_user_name
 #
-# Uses native aws_secretsmanager_secret (no external module —
-# avoids terraform >= 1.11 constraint from secrets-manager v2)
+# Requires: Terraform >= 1.11 (terraform-aws-modules/secrets-manager ~> 2.0)
 # ============================================================
 
 terraform {
+  required_version = ">= 1.11"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -42,8 +42,7 @@ variable "tags" {
   default = {}
 }
 
-# Manual secrets — update directly in Secrets Manager after first apply:
-#   AWS Console → Secrets Manager → dropstat/{env}/workload → Edit
+# Manual secrets — update directly in Secrets Manager after first apply
 variable "nursa_dropstat_password" {
   type      = string
   sensitive = true
@@ -73,7 +72,6 @@ resource "random_password" "mqtt" {
   special          = true
   override_special = "!#$%^&*()-_=+[]{}|;:,.<>?"
 
-  # Rotate by incrementing the keeper value
   keepers = {
     rotation = "1"
   }
@@ -81,7 +79,7 @@ resource "random_password" "mqtt" {
 
 resource "random_password" "jwt_secret_key" {
   length  = 64
-  special = false # Base64-safe for JWT
+  special = false
 
   keepers = {
     rotation = "1"
@@ -90,49 +88,41 @@ resource "random_password" "jwt_secret_key" {
 
 # ── Secrets Manager secret ────────────────────────────────────────────────────
 
-resource "aws_secretsmanager_secret" "workload" {
+module "secrets" {
+  source  = "terraform-aws-modules/secrets-manager/aws"
+  version = "~> 2.0"
+
   name                    = "dropstat/${var.env}/workload"
   description             = "Auto-generated and manual secrets for dropstat workload (${var.env})"
-  recovery_window_in_days = 0 # dev/staging: no recovery window
-
-  tags = var.tags
-}
-
-resource "aws_secretsmanager_secret_version" "workload" {
-  secret_id = aws_secretsmanager_secret.workload.id
+  recovery_window_in_days = 0
 
   secret_string = jsonencode({
-    # ── MQ ──────────────────────────────────────────────────────────────────
-    mqtt_username = "dropstat"
-    mqtt_password = random_password.mqtt.result
-
-    # ── dropstat-api ─────────────────────────────────────────────────────────
-    jwt_secret_key = random_password.jwt_secret_key.result
-
-    # ── nursa ─────────────────────────────────────────────────────────────────
+    mqtt_username           = "dropstat"
+    mqtt_password           = random_password.mqtt.result
+    jwt_secret_key          = random_password.jwt_secret_key.result
     nursa_dropstat_password = var.nursa_dropstat_password
     nursa_dropstat_user     = var.nursa_dropstat_user
     nursa_client_id         = var.nursa_client_id
     nursa_user_name         = var.nursa_user_name
   })
 
-  # Ignore secret_string changes after creation — manual values are updated
-  # directly in Secrets Manager, not via Terraform on every apply.
-  lifecycle {
-    ignore_changes = [secret_string]
-  }
+  # Ignore secret value changes after creation — manual secrets updated
+  # directly in Secrets Manager, not via Terraform
+  ignore_secret_changes = true
+
+  tags = var.tags
 }
 
 # ── Outputs ───────────────────────────────────────────────────────────────────
 
 output "secret_arn" {
   description = "ARN of the workload secret — use as: secret_arn:key::"
-  value       = aws_secretsmanager_secret.workload.arn
+  value       = module.secrets.secret_arn
 }
 
 output "secret_name" {
   description = "Name of the secret in Secrets Manager"
-  value       = aws_secretsmanager_secret.workload.name
+  value       = module.secrets.secret_id
 }
 
 output "mqtt_username" {
