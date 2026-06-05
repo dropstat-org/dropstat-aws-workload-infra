@@ -1,5 +1,9 @@
 variable "name" { type = string }
-variable "ecs_security_group_id" { type = string }
+variable "ecs_security_group_ids" {
+  type        = list(string)
+  description = "List of ECS task security group IDs allowed to connect to Aurora"
+  default     = []
+}
 
 variable "database_name" {
   type    = string
