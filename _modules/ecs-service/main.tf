@@ -250,6 +250,7 @@ module "service" {
 
   desired_count                      = var.desired_count
   deployment_minimum_healthy_percent = 50
+  health_check_grace_period_seconds  = var.health_check_grace_period_seconds
   deployment_maximum_percent         = 200
 
   # Bypass the service module's task definition — we manage it directly above.
