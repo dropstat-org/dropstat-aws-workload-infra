@@ -35,12 +35,14 @@ module "aurora" {
   create_db_subnet_group = var.db_subnet_group_name == null ? true : false
   subnets              = [for s in module.account.subnets.data : s.id]
 
-  security_group_rules = {
-    ecs_ingress = {
-      source_security_group_id = var.ecs_security_group_id
-      description              = "Allow MySQL from ECS tasks"
+  security_group_rules = merge(
+    {
+      for idx, sg_id in var.ecs_security_group_ids : "ecs_ingress_${idx}" => {
+        source_security_group_id = sg_id
+        description              = "Allow MySQL from ECS task SG ${idx}"
+      }
     }
-  }
+  )
 
   # When restoring from a snapshot, database_name and master_username
   # are inherited from the snapshot — passing them would cause an error.
