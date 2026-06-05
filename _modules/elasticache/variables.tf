@@ -1,5 +1,6 @@
-variable "name" { type = string }
-variable "ecs_security_group_id" { type = string }
+variable "name" {
+  type = string
+}
 
 variable "node_type" {
   type    = string

@@ -21,12 +21,12 @@ module "elasticache" {
   port            = 6379
 
   vpc_id     = module.account.vpc.id
-  subnet_ids = [for s in module.account.subnets.data : s.id]
+  subnet_ids = module.account.subnets.privates[*].id
 
   security_group_rules = {
-    ecs_ingress = {
-      referenced_security_group_id = var.ecs_security_group_id
-      description                  = "Allow Redis from ECS tasks"
+    private_subnets = {
+      cidr_blocks = module.account.subnets.privates[*].cidr_block
+      description = "Allow Redis from private subnets"
     }
   }
 
