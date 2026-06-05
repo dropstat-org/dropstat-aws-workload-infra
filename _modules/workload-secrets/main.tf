@@ -56,7 +56,8 @@ variable "nursa_user_name" {
 resource "random_password" "mqtt" {
   length           = 32
   special          = true
-  override_special = "!#$%^&*()-_=+[]{}|;:,.<>?"
+  # Amazon MQ rejects passwords containing , : =
+  override_special = "!#$%^&*()-_+[]{}|;<.>?"
 
   keepers = {
     rotation = "1"
