@@ -134,3 +134,9 @@ variable "enable_execute_command" {
   type        = bool
   default     = false
 }
+variable "health_check_grace_period_seconds" {
+  type        = number
+  description = "Seconds to ignore health checks after task starts (needed for slow-start Java apps)"
+  default     = 120
+}
+
