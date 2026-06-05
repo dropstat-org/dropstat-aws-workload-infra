@@ -24,9 +24,11 @@ module "elasticache" {
   subnet_ids = module.account.subnets.privates[*].id
 
   security_group_rules = {
-    private_subnets = {
-      cidr_blocks = module.account.subnets.privates[*].cidr_block
-      description = "Allow Redis from private subnets"
+    vpc_internal = {
+      # aws_vpc_security_group_ingress_rule requires a single cidr_ipv4.
+      # Use the VPC CIDR — covers all private subnets without needing per-subnet rules.
+      cidr_ipv4   = module.account.vpc.cidr_block
+      description = "Allow Redis from VPC (private subnets only)"
     }
   }
 
