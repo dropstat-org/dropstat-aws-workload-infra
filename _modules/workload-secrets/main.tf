@@ -83,7 +83,8 @@ module "secrets" {
   description             = "Auto-generated and manual secrets for dropstat workload (${var.env})"
   recovery_window_in_days = 0
 
-  secret_string = jsonencode({
+  # sensitive() ensures the entire JSON blob is masked in plan output
+  secret_string = sensitive(jsonencode({
     mqtt_username           = "dropstat"
     mqtt_password           = random_password.mqtt.result
     jwt_secret_key          = random_password.jwt_secret_key.result
@@ -91,7 +92,7 @@ module "secrets" {
     nursa_dropstat_user     = var.nursa_dropstat_user
     nursa_client_id         = var.nursa_client_id
     nursa_user_name         = var.nursa_user_name
-  })
+  }))
 
   # Ignore secret value changes after creation — manual secrets updated
   # directly in Secrets Manager, not via Terraform
