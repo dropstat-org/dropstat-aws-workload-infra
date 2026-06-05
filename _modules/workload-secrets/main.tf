@@ -18,20 +18,6 @@
 # Requires: Terraform >= 1.11 (terraform-aws-modules/secrets-manager ~> 2.0)
 # ============================================================
 
-terraform {
-  required_version = ">= 1.11"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.0"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = ">= 3.1"
-    }
-  }
-}
-
 variable "env" {
   type        = string
   description = "Environment name (dev, staging, prod)"
