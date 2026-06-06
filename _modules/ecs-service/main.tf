@@ -167,14 +167,12 @@ resource "aws_ecs_task_definition" "this" {
   execution_role_arn       = aws_iam_role.task_exec.arn
   task_role_arn            = aws_iam_role.task.arn
 
-  # container_definitions is owned by the app CD pipeline (service repo).
-  # workload-deploy creates the task definition ONCE on first deploy (bootstrap),
-  # then never modifies container_definitions again — no new revisions on each apply.
-  # Changes to cpu, memory, IAM roles, or sidecars DO trigger a new revision
-  # because those are infrastructure concerns owned by this repo.
-  lifecycle {
-    ignore_changes = [container_definitions]
-  }
+  # container_definitions is updated by workload-deploy whenever env vars, secrets,
+  # or image change. The ECS SERVICE is protected from image reversion separately:
+  # module "service" uses active_task_def_arn (the currently running ARN), so
+  # app CD pipelines remain the source of truth for what's live.
+  # workload-deploy registers a new task def revision here; the service only
+  # switches to it when the app CD pipeline does a force-new-deployment.
 
   container_definitions = jsonencode(concat([{
     name      = var.name
