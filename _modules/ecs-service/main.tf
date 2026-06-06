@@ -178,7 +178,9 @@ resource "aws_ecs_task_definition" "this" {
   container_definitions = jsonencode(concat([{
     name      = var.name
     image     = var.image
-    cpu       = var.cpu
+    # cpu is intentionally omitted at container level — Fargate only requires it
+    # at task level. Setting container cpu == task cpu causes ECS to reject the
+    # task definition when sidecar_containers are present (sum exceeds task cpu).
     memory    = var.memory
     essential = true
 
