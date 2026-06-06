@@ -167,13 +167,14 @@ resource "aws_ecs_task_definition" "this" {
   execution_role_arn       = aws_iam_role.task_exec.arn
   task_role_arn            = aws_iam_role.task.arn
 
-  # NOTE: No lifecycle ignore_changes here.
-  # workload-deploy can register new task def revisions freely (for env var or
-  # sidecar updates). The ECS *service* won't switch to the new revision until
-  # the app CD pipeline deploys — because module.service uses active_task_def_arn
-  # (the currently running ARN), not this resource's ARN.
-  # On first deploy (service doesn't exist yet), active_task_def_arn is empty
-  # and the service starts with this task def directly.
+  # container_definitions is owned by the app CD pipeline (service repo).
+  # workload-deploy creates the task definition ONCE on first deploy (bootstrap),
+  # then never modifies container_definitions again — no new revisions on each apply.
+  # Changes to cpu, memory, IAM roles, or sidecars DO trigger a new revision
+  # because those are infrastructure concerns owned by this repo.
+  lifecycle {
+    ignore_changes = [container_definitions]
+  }
 
   container_definitions = jsonencode(concat([{
     name      = var.name
