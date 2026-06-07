@@ -1,6 +1,6 @@
 # ============================================================
 # _modules/aurora
-# Aurora Serverless v2 — MySQL 8.0
+# Aurora Serverless v2 â€” MySQL 8.0
 # Replaces prod db.m5.4xlarge for dev/staging/prod
 # ============================================================
 
@@ -18,7 +18,7 @@ module "aurora" {
   # the version compatible with the snapshot. Specifying "8.0" resolves to the
   # latest Aurora 8.0 release which may require a newer MySQL minor version than
   # the snapshot's source (e.g. 8.0.44 < required 8.0.45 for aurora 3.10.3).
-  engine_version = var.snapshot_identifier == null ? "8.0" : null
+  engine_version = var.engine_version != null ? var.engine_version : (var.snapshot_identifier == null ? "8.0" : null)
   instance_class = "db.serverless"
 
   instances = {
@@ -35,7 +35,7 @@ module "aurora" {
   create_db_subnet_group = var.db_subnet_group_name == null ? true : false
   subnets              = [for s in module.account.subnets.data : s.id]
 
-  # Only services in private subnets can reach Aurora � more restrictive than VPC CIDR
+  # Only services in private subnets can reach Aurora — more restrictive than VPC CIDR
   security_group_rules = {
     private_subnets = {
       cidr_blocks = module.account.subnets.privates[*].cidr_block
@@ -44,7 +44,7 @@ module "aurora" {
   }
 
   # When restoring from a snapshot, database_name and master_username
-  # are inherited from the snapshot — passing them would cause an error.
+  # are inherited from the snapshot â€” passing them would cause an error.
   database_name   = var.snapshot_identifier == null ? var.database_name   : null
   master_username = var.snapshot_identifier == null ? var.master_username  : null
 
