@@ -64,3 +64,9 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "engine_version" {
+  description = "Aurora MySQL engine version. When null and snapshot_identifier is set, Aurora auto-selects. Use an explicit version (e.g. '8.0.mysql_aurora.3.08.0') when restoring from a non-Aurora MySQL snapshot to avoid version resolution issues."
+  type        = string
+  default     = null
+}
