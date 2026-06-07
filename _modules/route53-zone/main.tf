@@ -43,13 +43,20 @@ variable "tags" {
   default = {}
 }
 
+variable "force_destroy" {
+  type        = bool
+  default     = true
+  description = "Whether to delete all records in the zone when destroying it. Needed when recreating the zone (e.g. zone name change)."
+}
+
 module "zones" {
   source  = "terraform-aws-modules/route53/aws//modules/zones"
   version = "~> 4.0"
 
   zones = {
     (var.zone_name) = {
-      comment = var.comment != "" ? var.comment : "Private zone for internal service discovery — ${var.zone_name}"
+      comment       = var.comment != "" ? var.comment : "Private zone for internal service discovery — ${var.zone_name}"
+      force_destroy = var.force_destroy
 
       # Private zone — only resolvable from within the VPC
       vpc = [
