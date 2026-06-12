@@ -4,14 +4,6 @@
 # Replaces prod db.m5.4xlarge for dev/staging/prod
 # ============================================================
 
-terraform {
-  required_providers {
-    aws = {
-      configuration_aliases = [aws.network]
-    }
-  }
-}
-
 module "account" {
   source = "git::https://github.com/dropstat-org/tm-aws-account-data.git?ref=master"
 }
