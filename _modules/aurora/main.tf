@@ -57,7 +57,7 @@ module "aurora" {
     },
     var.enable_vpn_access ? {
       tailscale_router = {
-        cidr_blocks = module.network_account[0].subnets.networks[*].cidr_block
+        cidr_blocks = module.network_account[0].subnets.secures[*].cidr_block
         description = "Allow MySQL from Headscale/Tailscale subnet router (network account)"
       }
     } : {}
