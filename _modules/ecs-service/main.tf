@@ -102,6 +102,30 @@ resource "aws_iam_role_policy_attachment" "task_exec_secrets" {
   policy_arn = aws_iam_policy.task_exec_secrets[0].arn
 }
 
+resource "aws_iam_policy" "task_exec_ssm" {
+  count       = length(var.ssm_param_arns) > 0 ? 1 : 0
+  name_prefix = "${var.name}-exec-ssm-"
+  description = "Allow ECS execution role to read SSM parameters as secrets"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "GetSSMParams"
+      Effect   = "Allow"
+      Action   = ["ssm:GetParameters", "ssm:GetParameter"]
+      Resource = var.ssm_param_arns
+    }]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "task_exec_ssm" {
+  count      = length(var.ssm_param_arns) > 0 ? 1 : 0
+  role       = aws_iam_role.task_exec.name
+  policy_arn = aws_iam_policy.task_exec_ssm[0].arn
+}
+
 # ── IAM — task role (for app-level AWS API calls via task_iam_statements) ─────
 
 data "aws_iam_policy_document" "task_assume" {
