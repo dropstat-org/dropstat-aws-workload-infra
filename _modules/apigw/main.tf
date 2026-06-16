@@ -22,6 +22,9 @@ module "apigw" {
   create_domain_name          = var.domain_name != null
   domain_name                 = var.domain_name != null ? var.domain_name : ""
   domain_name_certificate_arn = var.certificate_arn
+  # Route53 record managed separately in dns-records-public to avoid
+  # data.aws_route53_zone lookup failures when zone doesn't exist yet.
+  create_domain_records = false
 
   # VPC Link — connects API GW to the internal ALB
   vpc_links = {
