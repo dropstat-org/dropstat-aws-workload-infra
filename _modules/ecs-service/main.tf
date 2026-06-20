@@ -397,3 +397,111 @@ resource "aws_iam_role_policy" "ecs_exec_ssm" {
     }]
   })
 }
+
+# ── Scale-to-zero (optional) ───────────────────────────────────────────────────
+#
+# Flow:
+#   idle N minutes (RequestCount = 0) → scale-down alarm → ExactCapacity 0
+#   request arrives (ALB returns 503) → scale-up alarm   → ExactCapacity 1
+#
+# Requires min_task_count = 0 in the caller. The pipeline CD wake step must
+# call `aws ecs update-service --desired-count 1` + wait before deploying,
+# so deploys never hit a cold service.
+
+locals {
+  # idle_threshold_minutes must be a multiple of 5 (CloudWatch period = 300s)
+  idle_evaluation_periods = max(1, floor(var.idle_threshold_minutes / 5))
+}
+
+# Step scaling policy — scale DOWN to 0 when idle alarm fires
+resource "aws_appautoscaling_policy" "scale_down_to_zero" {
+  count              = var.enable_scale_to_zero ? 1 : 0
+  name               = "${var.name}-scale-down-to-zero"
+  policy_type        = "StepScaling"
+  resource_id        = "service/${var.cluster_name}/${var.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+
+  step_scaling_policy_configuration {
+    adjustment_type         = "ExactCapacity"
+    cooldown                = 60
+    metric_aggregation_type = "Sum"
+
+    step_adjustment {
+      scaling_adjustment          = 0
+      metric_interval_upper_bound = 0
+    }
+  }
+
+  depends_on = [module.service]
+}
+
+# Step scaling policy — scale UP to 1 when 503 alarm fires
+resource "aws_appautoscaling_policy" "scale_up_from_zero" {
+  count              = var.enable_scale_to_zero ? 1 : 0
+  name               = "${var.name}-scale-up-from-zero"
+  policy_type        = "StepScaling"
+  resource_id        = "service/${var.cluster_name}/${var.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+
+  step_scaling_policy_configuration {
+    adjustment_type         = "ExactCapacity"
+    cooldown                = 60
+    metric_aggregation_type = "Sum"
+
+    step_adjustment {
+      scaling_adjustment          = 1
+      metric_interval_lower_bound = 0
+    }
+  }
+
+  depends_on = [module.service]
+}
+
+# CloudWatch alarm — no ALB traffic for idle_threshold_minutes → scale down
+resource "aws_cloudwatch_metric_alarm" "idle_scale_down" {
+  count               = var.enable_scale_to_zero ? 1 : 0
+  alarm_name          = "${var.name}-idle-scale-down"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = local.idle_evaluation_periods
+  metric_name         = "RequestCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1
+  # notBreaching: when tasks = 0 the metric disappears — treat as no traffic (stay idle)
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    TargetGroup  = aws_lb_target_group.this.arn_suffix
+    LoadBalancer = var.alb_arn_suffix
+  }
+
+  alarm_actions = [aws_appautoscaling_policy.scale_down_to_zero[0].arn]
+
+  tags = var.tags
+}
+
+# CloudWatch alarm — ALB returns 5xx (no targets) → wake up service
+resource "aws_cloudwatch_metric_alarm" "request_scale_up" {
+  count               = var.enable_scale_to_zero ? 1 : 0
+  alarm_name          = "${var.name}-request-scale-up"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "HTTPCode_ELB_5XX_Count"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    TargetGroup  = aws_lb_target_group.this.arn_suffix
+    LoadBalancer = var.alb_arn_suffix
+  }
+
+  alarm_actions = [aws_appautoscaling_policy.scale_up_from_zero[0].arn]
+
+  tags = var.tags
+}

@@ -146,3 +146,15 @@ variable "sidecar_containers" {
   default     = []
 }
 
+variable "enable_scale_to_zero" {
+  description = "Scale service to 0 tasks after idle_threshold_minutes of no ALB traffic. Requires min_task_count = 0. Service wakes automatically on incoming requests (503 → scale-up alarm)."
+  type        = bool
+  default     = false
+}
+
+variable "idle_threshold_minutes" {
+  description = "Minutes of zero ALB RequestCount before scaling down to 0 tasks. Must be a multiple of 5."
+  type        = number
+  default     = 60
+}
+
