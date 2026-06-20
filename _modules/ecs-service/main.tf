@@ -425,7 +425,7 @@ resource "aws_appautoscaling_policy" "scale_down_to_zero" {
   step_scaling_policy_configuration {
     adjustment_type         = "ExactCapacity"
     cooldown                = 60
-    metric_aggregation_type = "Sum"
+    metric_aggregation_type = "Average"
 
     step_adjustment {
       scaling_adjustment          = 0
@@ -448,7 +448,7 @@ resource "aws_appautoscaling_policy" "scale_up_from_zero" {
   step_scaling_policy_configuration {
     adjustment_type         = "ExactCapacity"
     cooldown                = 60
-    metric_aggregation_type = "Sum"
+    metric_aggregation_type = "Average"
 
     step_adjustment {
       scaling_adjustment          = 1
