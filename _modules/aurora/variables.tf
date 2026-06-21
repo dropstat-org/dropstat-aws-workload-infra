@@ -70,3 +70,9 @@ variable "engine_version" {
   type        = string
   default     = null
 }
+
+variable "enable_vpn_access" {
+  description = "Si es true, agrega una regla de ingress al SG de Aurora permitiendo acceso desde las subnets tgw-attachment de la cuenta network (Headscale/Tailscale subnet router). Requiere que el caller pase un provider aliased aws.network."
+  type        = bool
+  default     = false
+}

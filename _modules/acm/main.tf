@@ -1,6 +1,7 @@
 resource "aws_acm_certificate" "this" {
-  domain_name       = var.domain_name
-  validation_method = "DNS"
+  domain_name               = var.domain_name
+  subject_alternative_names = var.subject_alternative_names
+  validation_method         = "DNS"
 
   lifecycle {
     create_before_destroy = true
@@ -36,7 +37,9 @@ resource "aws_acm_certificate_validation" "this" {
 }
 
 output "acm_certificate_arn" {
-  value = aws_acm_certificate.this.arn
+  # Depend on validation so downstream resources (API GW) only receive the ARN
+  # once the certificate is ISSUED — not while it is still PENDING_VALIDATION.
+  value = var.zone_id != null ? aws_acm_certificate_validation.this[0].certificate_arn : aws_acm_certificate.this.arn
 }
 
 output "validation_records" {

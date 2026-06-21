@@ -102,6 +102,30 @@ resource "aws_iam_role_policy_attachment" "task_exec_secrets" {
   policy_arn = aws_iam_policy.task_exec_secrets[0].arn
 }
 
+resource "aws_iam_policy" "task_exec_ssm" {
+  count       = length(var.ssm_param_arns) > 0 ? 1 : 0
+  name_prefix = "${var.name}-exec-ssm-"
+  description = "Allow ECS execution role to read SSM parameters as secrets"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "GetSSMParams"
+      Effect   = "Allow"
+      Action   = ["ssm:GetParameters", "ssm:GetParameter"]
+      Resource = var.ssm_param_arns
+    }]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "task_exec_ssm" {
+  count      = length(var.ssm_param_arns) > 0 ? 1 : 0
+  role       = aws_iam_role.task_exec.name
+  policy_arn = aws_iam_policy.task_exec_ssm[0].arn
+}
+
 # ── IAM — task role (for app-level AWS API calls via task_iam_statements) ─────
 
 data "aws_iam_policy_document" "task_assume" {
@@ -374,62 +398,94 @@ resource "aws_iam_role_policy" "ecs_exec_ssm" {
   })
 }
 
-# ── Scale-from-zero (step scaling) ───────────────────────────────────────────
-# Active only when min_task_count = 0.
-# Two complementary policies:
-#   scale-up:   triggered when ALB returns 5xx (no healthy targets) → desired = 1
-#   scale-down: triggered after idle_scale_down_period_seconds of zero requests → desired = 0
-# The TargetTracking policy (alb_requests above) handles scaling between 1..max_task_count.
+# ── Scale-to-zero (optional) ───────────────────────────────────────────────────
+#
+# Flow:
+#   idle N minutes (RequestCount = 0) → scale-down alarm → ExactCapacity 0
+#   request arrives (ALB returns 503) → scale-up alarm   → ExactCapacity 1
+#
+# Requires min_task_count = 0 in the caller. The pipeline CD wake step must
+# call `aws ecs update-service --desired-count 1` + wait before deploying,
+# so deploys never hit a cold service.
 
 locals {
-  scale_from_zero = var.min_task_count == 0
-  autoscaling_resource_id = "service/${var.cluster_name}/${var.name}"
+  # idle_threshold_minutes must be a multiple of 5 (CloudWatch period = 300s)
+  idle_evaluation_periods = max(1, floor(var.idle_threshold_minutes / 5))
 }
 
-resource "aws_appautoscaling_policy" "scale_up_from_zero" {
-  count              = local.scale_from_zero ? 1 : 0
-  name               = "${var.name}-scale-up-from-zero"
-  service_namespace  = "ecs"
-  resource_id        = local.autoscaling_resource_id
-  scalable_dimension = "ecs:service:DesiredCount"
-  policy_type        = "StepScaling"
-
-  step_scaling_policy_configuration {
-    adjustment_type          = "ExactCapacity"
-    cooldown                 = 60
-    metric_aggregation_type  = "Average"
-    step_adjustment {
-      metric_interval_lower_bound = 0
-      scaling_adjustment          = 1
-    }
-  }
-
-  depends_on = [module.ecs_service]
-}
-
+# Step scaling policy — scale DOWN to 0 when idle alarm fires
 resource "aws_appautoscaling_policy" "scale_down_to_zero" {
-  count              = local.scale_from_zero ? 1 : 0
+  count              = var.enable_scale_to_zero ? 1 : 0
   name               = "${var.name}-scale-down-to-zero"
-  service_namespace  = "ecs"
-  resource_id        = local.autoscaling_resource_id
-  scalable_dimension = "ecs:service:DesiredCount"
   policy_type        = "StepScaling"
+  resource_id        = "service/${var.cluster_name}/${var.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
 
   step_scaling_policy_configuration {
-    adjustment_type          = "ExactCapacity"
-    cooldown                 = 60
-    metric_aggregation_type  = "Average"
+    adjustment_type         = "ExactCapacity"
+    cooldown                = 60
+    metric_aggregation_type = "Average"
+
     step_adjustment {
-      metric_interval_upper_bound = 0
       scaling_adjustment          = 0
+      metric_interval_upper_bound = 0
     }
   }
 
-  depends_on = [module.ecs_service]
+  depends_on = [module.service]
 }
 
-resource "aws_cloudwatch_metric_alarm" "scale_up_from_zero" {
-  count               = local.scale_from_zero ? 1 : 0
+# Step scaling policy — scale UP to 1 when 503 alarm fires
+resource "aws_appautoscaling_policy" "scale_up_from_zero" {
+  count              = var.enable_scale_to_zero ? 1 : 0
+  name               = "${var.name}-scale-up-from-zero"
+  policy_type        = "StepScaling"
+  resource_id        = "service/${var.cluster_name}/${var.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+
+  step_scaling_policy_configuration {
+    adjustment_type         = "ExactCapacity"
+    cooldown                = 60
+    metric_aggregation_type = "Average"
+
+    step_adjustment {
+      scaling_adjustment          = 1
+      metric_interval_lower_bound = 0
+    }
+  }
+
+  depends_on = [module.service]
+}
+
+# CloudWatch alarm — no ALB traffic for idle_threshold_minutes → scale down
+resource "aws_cloudwatch_metric_alarm" "idle_scale_down" {
+  count               = var.enable_scale_to_zero ? 1 : 0
+  alarm_name          = "${var.name}-idle-scale-down"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = local.idle_evaluation_periods
+  metric_name         = "RequestCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1
+  # notBreaching: when tasks = 0 the metric disappears — treat as no traffic (stay idle)
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    TargetGroup  = aws_lb_target_group.this.arn_suffix
+    LoadBalancer = var.alb_arn_suffix
+  }
+
+  alarm_actions = [aws_appautoscaling_policy.scale_down_to_zero[0].arn]
+
+  tags = var.tags
+}
+
+# CloudWatch alarm — ALB returns 5xx (no targets) → wake up service
+resource "aws_cloudwatch_metric_alarm" "request_scale_up" {
+  count               = var.enable_scale_to_zero ? 1 : 0
   alarm_name          = "${var.name}-request-scale-up"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
@@ -441,31 +497,11 @@ resource "aws_cloudwatch_metric_alarm" "scale_up_from_zero" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    LoadBalancer = var.alb_arn_suffix
     TargetGroup  = aws_lb_target_group.this.arn_suffix
+    LoadBalancer = var.alb_arn_suffix
   }
 
   alarm_actions = [aws_appautoscaling_policy.scale_up_from_zero[0].arn]
-  tags          = var.tags
-}
 
-resource "aws_cloudwatch_metric_alarm" "idle_scale_down" {
-  count               = local.scale_from_zero ? 1 : 0
-  alarm_name          = "${var.name}-idle-scale-down"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "RequestCount"
-  namespace           = "AWS/ApplicationELB"
-  period              = var.idle_scale_down_period_seconds
-  statistic           = "Sum"
-  threshold           = 1
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    LoadBalancer = var.alb_arn_suffix
-    TargetGroup  = aws_lb_target_group.this.arn_suffix
-  }
-
-  alarm_actions = [aws_appautoscaling_policy.scale_down_to_zero[0].arn]
-  tags          = var.tags
+  tags = var.tags
 }

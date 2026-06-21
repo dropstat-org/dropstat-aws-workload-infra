@@ -8,6 +8,18 @@ module "account" {
   source = "git::https://github.com/dropstat-org/tm-aws-account-data.git?ref=master"
 }
 
+# Subnets de la cuenta network (tgw-attachment) — solo si se habilita acceso VPN.
+# Permite agregar el CIDR del tailscale subnet router al SG de Aurora sin
+# tocar el módulo de red ni hardcodear el CIDR.
+module "network_account" {
+  count  = var.enable_vpn_access ? 1 : 0
+  source = "git::https://github.com/dropstat-org/tm-aws-account-data.git?ref=master"
+
+  providers = {
+    aws = aws.network
+  }
+}
+
 module "aurora" {
   source  = "terraform-aws-modules/rds-aurora/aws"
   version = "~> 9.0"
@@ -36,12 +48,20 @@ module "aurora" {
   subnets              = [for s in module.account.subnets.data : s.id]
 
   # Only services in private subnets can reach Aurora — more restrictive than VPC CIDR
-  security_group_rules = {
-    private_subnets = {
-      cidr_blocks = module.account.subnets.privates[*].cidr_block
-      description = "Allow MySQL from private subnets only"
-    }
-  }
+  security_group_rules = merge(
+    {
+      private_subnets = {
+        cidr_blocks = module.account.subnets.privates[*].cidr_block
+        description = "Allow MySQL from private subnets only"
+      }
+    },
+    var.enable_vpn_access ? {
+      tailscale_router = {
+        cidr_blocks = module.network_account[0].subnets.secures[*].cidr_block
+        description = "Allow MySQL from Headscale/Tailscale subnet router (network account)"
+      }
+    } : {}
+  )
 
   # When restoring from a snapshot, database_name and master_username
   # are inherited from the snapshot â€” passing them would cause an error.
