@@ -146,3 +146,9 @@ variable "sidecar_containers" {
   default     = []
 }
 
+variable "idle_scale_down_period_seconds" {
+  description = "Seconds of zero ALB requests before the service scales down to zero. Only active when min_task_count = 0. Default 1800 (30 min)."
+  type        = number
+  default     = 1800
+}
+
