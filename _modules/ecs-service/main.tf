@@ -484,6 +484,17 @@ resource "aws_cloudwatch_metric_alarm" "idle_scale_down" {
 }
 
 # CloudWatch alarm — ALB returns 5xx (no targets) → wake up service
+#
+# IMPORTANT: dimension is LoadBalancer-only, NOT TargetGroup. When a target group
+# has 0 registered targets (scaled to zero), the ALB still returns 503 but the
+# HTTPCode_ELB_5XX_Count metric is published ONLY under the LoadBalancer dimension
+# — there is NO datapoint at the TargetGroup level. Filtering by TargetGroup makes
+# the alarm sit in OK ("no datapoints, treated as NonBreaching") forever and the
+# service never wakes. Verified empirically: LB-only = 3 datapoints, LB+TG = empty.
+#
+# Trade-off: services sharing this ALB wake together on any 5xx (the metric is not
+# attributable per target group at zero targets). Acceptable in dev — each scaled-
+# to-zero service that wakes unnecessarily just idles back down after the threshold.
 resource "aws_cloudwatch_metric_alarm" "request_scale_up" {
   count               = var.enable_scale_to_zero ? 1 : 0
   alarm_name          = "${var.name}-request-scale-up"
@@ -497,7 +508,6 @@ resource "aws_cloudwatch_metric_alarm" "request_scale_up" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    TargetGroup  = aws_lb_target_group.this.arn_suffix
     LoadBalancer = var.alb_arn_suffix
   }
 
