@@ -51,25 +51,6 @@ variable "nursa_user_name" {
   default = "REPLACE_ME"
 }
 
-# Read-replica connection params — stored in SSM (no credentials here)
-variable "read_replica_host" {
-  description = "Aurora reader endpoint — stored as SSM parameter"
-  type        = string
-  default     = ""
-}
-
-variable "read_replica_port" {
-  description = "Aurora reader port"
-  type        = number
-  default     = 3306
-}
-
-variable "read_replica_dbname" {
-  description = "Aurora database name for the read replica datasource"
-  type        = string
-  default     = "dropstat"
-}
-
 # ── Auto-generated passwords ──────────────────────────────────────────────────
 
 resource "random_password" "mqtt" {
@@ -120,29 +101,6 @@ module "secrets" {
   tags = var.tags
 }
 
-# ── Read-replica SSM parameters (connection only — no credentials) ────────────
-
-resource "aws_ssm_parameter" "read_replica_host" {
-  count = var.read_replica_host != "" ? 1 : 0
-  name  = "/${var.env}/dropstat-api/read_replica_host"
-  type  = "String"
-  value = var.read_replica_host
-}
-
-resource "aws_ssm_parameter" "read_replica_port" {
-  count = var.read_replica_host != "" ? 1 : 0
-  name  = "/${var.env}/dropstat-api/read_replica_port"
-  type  = "String"
-  value = tostring(var.read_replica_port)
-}
-
-resource "aws_ssm_parameter" "read_replica_dbname" {
-  count = var.read_replica_host != "" ? 1 : 0
-  name  = "/${var.env}/dropstat-api/read_replica_dbname"
-  type  = "String"
-  value = var.read_replica_dbname
-}
-
 # ── Outputs ───────────────────────────────────────────────────────────────────
 
 output "secret_arn" {
@@ -164,13 +122,4 @@ output "mqtt_password" {
   description = "Auto-generated MQ password — passed to MQ module at apply time"
   value       = random_password.mqtt.result
   sensitive   = true
-}
-
-output "read_replica_ssm_arns" {
-  description = "SSM parameter ARNs for read-replica connection (host/port/dbname). Null when read_replica_host not set."
-  value = length(aws_ssm_parameter.read_replica_host) > 0 ? {
-    host   = aws_ssm_parameter.read_replica_host[0].arn
-    port   = aws_ssm_parameter.read_replica_port[0].arn
-    dbname = aws_ssm_parameter.read_replica_dbname[0].arn
-  } : null
 }
