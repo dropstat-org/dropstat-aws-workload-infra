@@ -5,7 +5,8 @@ variable "zone_name" {
 
 variable "vpc_id" {
   type        = string
-  description = "VPC ID to associate with the private zone"
+  description = "VPC ID to associate with the private zone. Leave empty to auto-discover the account VPC via tm-aws-account-data."
+  default     = ""
 }
 
 variable "vpc_region" {
