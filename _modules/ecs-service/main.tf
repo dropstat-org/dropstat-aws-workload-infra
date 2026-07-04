@@ -257,8 +257,12 @@ resource "aws_lb_target_group" "this" {
 
 # ── ALB listener rule — host-based routing ────────────────────────────────────
 
+# Guard on a VALID arn (not just non-null): during a two-phase env bootstrap the
+# listener ARN is a "FILL_*" placeholder string until the ALB exists. can(regex)
+# yields false for placeholders/null so the plan stays green (the rule appears
+# once the real ARN is filled). Real ARNs are unaffected (count = 1).
 resource "aws_lb_listener_rule" "this" {
-  count        = local.listener_arn != null ? 1 : 0
+  count        = can(regex("^arn:aws:", local.listener_arn)) ? 1 : 0
   listener_arn = local.listener_arn
   priority     = var.listener_rule_priority
 
