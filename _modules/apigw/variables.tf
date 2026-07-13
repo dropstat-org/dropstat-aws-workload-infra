@@ -49,3 +49,9 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "cors_allowed_origins" {
+  description = "Origenes permitidos para CORS (frontends). Vacio = sin cors_configuration (comportamiento previo)."
+  type        = list(string)
+  default     = []
+}

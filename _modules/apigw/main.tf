@@ -32,6 +32,17 @@ module "apigw" {
   # data.aws_route53_zone lookup failures when zone doesn't exist yet.
   create_domain_records = false
 
+  # CORS — el HTTP API responde el preflight (OPTIONS) y agrega los headers en
+  # las respuestas. Sin esto, los frontends (CloudFront, otro origen) mueren en
+  # "blocked by CORS policy: No 'Access-Control-Allow-Origin'". Cuando se
+  # configura aqui, API GW tiene precedencia sobre headers CORS del backend.
+  cors_configuration = length(var.cors_allowed_origins) > 0 ? {
+    allow_origins = var.cors_allowed_origins
+    allow_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
+    allow_headers = ["*"]
+    max_age       = 3600
+  } : null
+
   # VPC Link — connects API GW to the internal ALB
   vpc_links = {
     main = {
