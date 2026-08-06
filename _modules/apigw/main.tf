@@ -36,11 +36,18 @@ module "apigw" {
   # las respuestas. Sin esto, los frontends (CloudFront, otro origen) mueren en
   # "blocked by CORS policy: No 'Access-Control-Allow-Origin'". Cuando se
   # configura aqui, API GW tiene precedencia sobre headers CORS del backend.
+  #
+  # Precedencia significa REEMPLAZO, no merge: los headers CORS que manda el
+  # backend se descartan enteros. Por eso expose_headers tiene que declararse
+  # aqui aunque Spring ya lo mande. Se omitio al principio y el navegador dejo
+  # de ver Content-Disposition en qa: la descarga llegaba completa pero con el
+  # nombre generico, porque el JS no puede leer un header que no esta expuesto.
   cors_configuration = length(var.cors_allowed_origins) > 0 ? {
-    allow_origins = var.cors_allowed_origins
-    allow_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
-    allow_headers = ["*"]
-    max_age       = 3600
+    allow_origins  = var.cors_allowed_origins
+    allow_methods  = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
+    allow_headers  = ["*"]
+    expose_headers = var.cors_expose_headers
+    max_age        = 3600
   } : null
 
   # VPC Link — connects API GW to the internal ALB
