@@ -55,3 +55,12 @@ variable "cors_allowed_origins" {
   type        = list(string)
   default     = []
 }
+
+# Solo aplica cuando cors_allowed_origins no esta vacio. Sin esta lista el
+# navegador oculta el header al JS aunque viaje en la respuesta: Content-Disposition
+# es el que da el nombre real a los reportes descargados.
+variable "cors_expose_headers" {
+  description = "Headers que el navegador puede leer desde JS (Access-Control-Expose-Headers)."
+  type        = list(string)
+  default     = ["Content-Disposition"]
+}
