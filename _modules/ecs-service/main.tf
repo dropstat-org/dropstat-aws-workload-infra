@@ -207,10 +207,16 @@ resource "aws_ecs_task_definition" "this" {
     memory    = var.memory
     essential = true
 
-    portMappings = [{
-      containerPort = var.container_port
-      protocol      = "tcp"
-    }]
+    portMappings = concat(
+      [{
+        containerPort = var.container_port
+        protocol      = "tcp"
+      }],
+      [for port in var.additional_container_ports : {
+        containerPort = port
+        protocol      = "tcp"
+      }]
+    )
 
     environment = var.environment_vars
 
@@ -243,6 +249,7 @@ resource "aws_lb_target_group" "this" {
 
   health_check {
     path                = var.health_check_path
+    port                = var.health_check_port
     healthy_threshold   = 2
     unhealthy_threshold = 3
     interval            = 30
@@ -290,15 +297,24 @@ module "sg_tasks" {
   description = "ECS tasks for ${var.name} - inbound from ALB only"
   vpc_id      = module.account.vpc.id
 
-  ingress_with_source_security_group_id = [
-    {
-      from_port                = var.container_port
-      to_port                  = var.container_port
+  ingress_with_source_security_group_id = concat(
+    [
+      {
+        from_port                = var.container_port
+        to_port                  = var.container_port
+        protocol                 = "tcp"
+        source_security_group_id = var.alb_security_group_id
+        description              = "Allow inbound from ALB"
+      }
+    ],
+    [for port in var.additional_container_ports : {
+      from_port                = port
+      to_port                  = port
       protocol                 = "tcp"
       source_security_group_id = var.alb_security_group_id
-      description              = "Allow inbound from ALB"
-    }
-  ]
+      description              = "Allow inbound from ALB on port ${port}"
+    }]
+  )
 
   egress_rules = ["all-all"]
 
