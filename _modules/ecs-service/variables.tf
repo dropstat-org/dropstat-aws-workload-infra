@@ -158,3 +158,14 @@ variable "idle_threshold_minutes" {
   default     = 60
 }
 
+variable "health_check_port" {
+  description = "Port used by the target group health check. traffic-port keeps the container_port; set a number to probe a separate management port."
+  type        = string
+  default     = "traffic-port"
+}
+
+variable "additional_container_ports" {
+  description = "Extra container ports mapped in the task definition and opened to the ALB security group, for example a management port used only by health checks."
+  type        = list(number)
+  default     = []
+}
