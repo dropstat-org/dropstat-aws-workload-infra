@@ -26,14 +26,45 @@ locals {
 # If the service exists, we pass that ARN to the ECS service module — Terraform
 # never changes which revision is live. On first deploy (service doesn't exist),
 # we fall back to the task def we create below.
+data "aws_caller_identity" "current" {}
+
+locals {
+  cluster_account_id = split(":", var.cluster_arn)[4]
+  cluster_region     = split(":", var.cluster_arn)[3]
+  caller_role_name   = can(regex(":assumed-role/", data.aws_caller_identity.current.arn)) ? split("/", data.aws_caller_identity.current.arn)[1] : ""
+  lookup_role_arn    = local.caller_role_name != "" ? "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.caller_role_name}" : ""
+}
+
 data "external" "active_task_definition" {
   program = ["bash", "-c", <<-EOT
-    ARN=$(aws ecs describe-services \
-      --cluster "${var.cluster_name}" \
-      --services "${var.name}" \
-      --region us-east-2 \
-      --query 'services[0].taskDefinition' \
-      --output text 2>/dev/null)
+    set -uo pipefail
+    ROLE="${local.lookup_role_arn}"
+    if [ -n "$ROLE" ]; then
+      CREDS=$(aws sts assume-role --role-arn "$ROLE" --role-session-name ecs-active-task-def \
+        --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text 2>/dev/null | tr -d '\r')
+      if [ -n "$CREDS" ]; then
+        read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<<"$CREDS"
+        export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+        unset AWS_PROFILE
+      fi
+    fi
+    ACCOUNT=$(aws sts get-caller-identity --query Account --output text 2>/dev/null | tr -d '\r')
+    if [ "$ACCOUNT" != "${local.cluster_account_id}" ]; then
+      echo "active task definition lookup: AWS CLI runs in account '$ACCOUNT', expected ${local.cluster_account_id}" >&2
+      exit 1
+    fi
+    if ! OUT=$(aws ecs describe-services \
+        --cluster "${var.cluster_name}" \
+        --services "${var.name}" \
+        --region "${local.cluster_region}" \
+        --query 'services[?status==`ACTIVE`].taskDefinition | [0]' \
+        --output text 2>&1); then
+      case "$OUT" in
+        *ClusterNotFoundException*) OUT="" ;;
+        *) echo "active task definition lookup failed: $OUT" >&2; exit 1 ;;
+      esac
+    fi
+    ARN=$(printf '%s' "$OUT" | tr -d '\r\n')
     if [ -z "$ARN" ] || [ "$ARN" = "None" ] || [ "$ARN" = "null" ]; then
       printf '{"arn":""}'
     else
